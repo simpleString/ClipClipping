@@ -46,7 +46,9 @@ Basic.ApplicationWindow {
     }
 
     function seekTo(seconds) {
-        const clamped = clamp(seconds, 0, safeDuration)
+        const fps = Math.max(1, appController.videoFps)
+        const snapped = Math.round(clamp(seconds, 0, safeDuration) * fps) / fps
+        const clamped = clamp(snapped, 0, safeDuration)
         const ms = Math.round(clamped * 1000)
         player.position = ms
         appController.currentTime = clamped
@@ -240,15 +242,23 @@ Basic.ApplicationWindow {
                 readonly property real minScale: 1.0
                 readonly property real maxScale: 20.0
 
+                function snapToFrame(t) {
+                    const fps = Math.max(1, appController.videoFps)
+                    return clamp(Math.round(clamp(t, 0, safeDuration) * fps) / fps, 0, safeDuration)
+                }
+
                 function applyZoom(factor) {
                     const oldScale = timelinePanel.timelineScale
                     const newScale = clamp(oldScale * factor, timelinePanel.minScale, timelinePanel.maxScale)
                     if (Math.abs(newScale - oldScale) < 0.0001)
                         return
 
-                    const screenX = (appController.currentTime / safeDuration) * timelineView.width * oldScale - timelineFlick.contentX
+                    const oldContentWidth = timelineFlick.width * oldScale
+                    const playheadOldX = (appController.currentTime / safeDuration) * oldContentWidth
+                    const screenX = playheadOldX - timelineFlick.contentX
                     timelinePanel.timelineScale = newScale
-                    const newPlayheadX = (appController.currentTime / safeDuration) * timelineView.width * newScale
+                    const newContentWidth = timelineFlick.width * newScale
+                    const newPlayheadX = (appController.currentTime / safeDuration) * newContentWidth
                     const maxContentX = Math.max(0, timelineFlick.contentWidth - timelineFlick.width)
                     timelineFlick.contentX = clamp(newPlayheadX - screenX, 0, maxContentX)
                     requestVisibleWindowThumbs()
@@ -307,7 +317,7 @@ Basic.ApplicationWindow {
                         onEditingFinished: {
                             const t = parseTimeInput(text)
                             if (t >= 0)
-                                appController.startTime = clamp(t, 0, appController.endTime - 0.1)
+                                appController.startTime = timelinePanel.snapToFrame(clamp(t, 0, appController.endTime - 0.1))
                             text = formatTime(appController.startTime)
                         }
                     }
@@ -328,7 +338,7 @@ Basic.ApplicationWindow {
                         onEditingFinished: {
                             const t = parseTimeInput(text)
                             if (t >= 0)
-                                appController.endTime = clamp(t, appController.startTime + 0.1, safeDuration)
+                                appController.endTime = timelinePanel.snapToFrame(clamp(t, appController.startTime + 0.1, safeDuration))
                             text = formatTime(appController.endTime)
                         }
                     }
@@ -490,7 +500,7 @@ Basic.ApplicationWindow {
                                 drag.minimumX: -7
                                 drag.maximumX: ((appController.endTime / safeDuration) * timelineView.width) - 14
                                 onPositionChanged: {
-                                    const t = clamp((parent.x + 7) / timelineView.width * safeDuration, 0, appController.endTime - 0.1)
+                                    const t = timelinePanel.snapToFrame(clamp((parent.x + 7) / timelineView.width * safeDuration, 0, appController.endTime - 0.1))
                                     appController.startTime = t
                                     if (!startInput.activeFocus)
                                         startInput.text = formatTime(appController.startTime)
@@ -515,7 +525,7 @@ Basic.ApplicationWindow {
                                 drag.minimumX: ((appController.startTime / safeDuration) * timelineView.width)
                                 drag.maximumX: timelineView.width - 7
                                 onPositionChanged: {
-                                    const t = clamp((parent.x + 7) / timelineView.width * safeDuration, appController.startTime + 0.1, safeDuration)
+                                    const t = timelinePanel.snapToFrame(clamp((parent.x + 7) / timelineView.width * safeDuration, appController.startTime + 0.1, safeDuration))
                                     appController.endTime = t
                                     if (!endInput.activeFocus)
                                         endInput.text = formatTime(appController.endTime)
@@ -546,12 +556,13 @@ Basic.ApplicationWindow {
                                     if (Math.abs(newScale - oldScale) < 0.0001)
                                         return
 
-                                    const anchorAbsX = timelineFlick.contentX + wheel.x
-                                    const anchorRatio = anchorAbsX / Math.max(1, timelineFlick.contentWidth)
+                                    const oldContentWidth = timelineFlick.width * oldScale
+                                    const playheadOldX = (appController.currentTime / safeDuration) * oldContentWidth
+                                    const screenX = playheadOldX - timelineFlick.contentX
                                     timelinePanel.timelineScale = newScale
-                                    const newContentWidth = timelineView.width
-                                    const newContentX = anchorRatio * newContentWidth - wheel.x
-                                    timelineFlick.contentX = clamp(newContentX, 0, Math.max(0, timelineFlick.contentWidth - timelineFlick.width))
+                                    const newContentWidth = timelineFlick.width * newScale
+                                    const playheadNewX = (appController.currentTime / safeDuration) * newContentWidth
+                                    timelineFlick.contentX = clamp(playheadNewX - screenX, 0, Math.max(0, timelineFlick.contentWidth - timelineFlick.width))
                                     timelinePanel.requestVisibleWindowThumbs()
                                     thumbsDebounce.restart()
                                 }
