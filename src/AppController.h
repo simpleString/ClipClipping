@@ -3,6 +3,13 @@
 #include <QObject>
 #include <QProcess>
 #include <QStringList>
+#include <QTimer>
+#include <QImage>
+#include <QFutureWatcher>
+
+class QMediaPlayer;
+class QVideoSink;
+class QVideoFrame;
 
 class AppController : public QObject {
     Q_OBJECT
@@ -20,6 +27,8 @@ class AppController : public QObject {
     Q_PROPERTY(bool converting READ converting NOTIFY conversionStateChanged)
     Q_PROPERTY(int progress READ progress NOTIFY conversionStateChanged)
     Q_PROPERTY(QStringList thumbnailUrls READ thumbnailUrls NOTIFY thumbnailsChanged)
+    Q_PROPERTY(int thumbnailsVersion READ thumbnailsVersion NOTIFY thumbnailsChanged)
+    Q_PROPERTY(int thumbnailsGenerated READ thumbnailsGenerated NOTIFY thumbnailsChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
     Q_PROPERTY(QString successMessage READ successMessage NOTIFY successMessageChanged)
     Q_PROPERTY(double estimatedSizeMb READ estimatedSizeMb NOTIFY settingsChanged)
@@ -40,6 +49,8 @@ public:
     bool converting() const;
     int progress() const;
     QStringList thumbnailUrls() const;
+    int thumbnailsVersion() const;
+    int thumbnailsGenerated() const;
     QString errorMessage() const;
     QString successMessage() const;
     double estimatedSizeMb() const;
@@ -50,6 +61,8 @@ public:
     Q_INVOKABLE void startConversion(const QString &outputPath);
     Q_INVOKABLE void cancelConversion();
     Q_INVOKABLE void clearVideo();
+    Q_INVOKABLE void ensureThumbnailsForCount(int count);
+    Q_INVOKABLE void ensureThumbnailsForWindow(int count, double fromSec, double toSec);
     bool hasVideo() const;
 
 public slots:
@@ -98,7 +111,10 @@ private:
                     double clipDuration,
                     int fps,
                     int width);
-    void generateThumbnails(const QString &inputPath, double duration);
+    void startThumbnailGeneration(int count);
+    void continueThumbnailGeneration();
+    void onThumbnailStepTimeout();
+    void finishThumbnailGeneration();
 
     void setError(const QString &message);
     void clearMessages();
@@ -119,9 +135,30 @@ private:
     bool m_converting = false;
     int m_progress = 0;
     QStringList m_thumbnailUrls;
+    int m_thumbnailsVersion = 0;
+    int m_thumbnailsGenerated = 0;
     QString m_errorMessage;
     QString m_successMessage;
 
     QProcess *m_activeFfmpeg = nullptr;
     bool m_cancelRequested = false;
+    int m_thumbnailCount = 0;
+    int m_thumbnailPoolCount = 0;
+    int m_pendingThumbnailCount = 0;
+    bool m_thumbnailGenerating = false;
+    QStringList m_thumbnailPoolUrls;
+    double m_thumbWindowFrom = 0.0;
+    double m_thumbWindowTo = 0.0;
+
+    QMediaPlayer *m_thumbPlayer = nullptr;
+    QVideoSink *m_thumbSink = nullptr;
+    QTimer m_thumbStepTimer;
+    int m_thumbTargetCount = 0;
+    int m_thumbCurrentIndex = 0;
+    double m_thumbStepSec = 0.0;
+    double m_thumbRequestedSec = 0.0;
+    bool m_thumbFrameReady = false;
+    int m_thumbRetryCount = 0;
+    QImage m_lastThumbImage;
+    QFutureWatcher<QStringList> m_thumbWatcher;
 };

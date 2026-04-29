@@ -12,15 +12,97 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QMediaPlayer>
+#include <QVideoSink>
+#include <QVideoFrame>
+#include <QImage>
+#include <QtConcurrent>
 
 #include <algorithm>
 #include <cmath>
 
 namespace {
 constexpr qint64 kMaxGifSize = 10 * 1024 * 1024;
+constexpr int kFixedThumbCount = 12;
+
+QStringList generateThumbnailsWithFfmpegFallback(const QString &videoPath, double duration, int count) {
+    QStringList urls;
+    const QString tmpRoot = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    if (tmpRoot.isEmpty() || duration <= 0.0 || count <= 0) {
+        return urls;
+    }
+
+    const QFileInfo info(videoPath);
+    const QByteArray key = videoPath.toUtf8()
+        + QByteArray::number(info.size())
+        + QByteArray::number(qint64(info.lastModified().toMSecsSinceEpoch()))
+        + QByteArrayLiteral("thumb_ffmpeg_parallel_v2");
+    const QString hash = QString::fromLatin1(QCryptographicHash::hash(key, QCryptographicHash::Md5).toHex());
+    const QString dirPath = QDir(tmpRoot).filePath(QStringLiteral("telegramgifterqt_thumbs/%1/fallback_%2").arg(hash).arg(count));
+    QDir dir(dirPath);
+    if (!dir.exists()) {
+        dir.mkpath(QStringLiteral("."));
+    }
+
+    struct Job {
+        int idx;
+        QString outPath;
+        QProcess *proc;
+    };
+
+    QList<Job> jobs;
+    jobs.reserve(count);
+
+    for (int i = 0; i < count; ++i) {
+        const QString outPath = dir.filePath(QStringLiteral("thumb_%1.png").arg(i, 3, 10, QChar('0')));
+        if (!QFileInfo::exists(outPath)) {
+            const double pos = duration * (double(i) + 0.5) / double(count);
+            auto *proc = new QProcess();
+            QStringList args{
+                "-y",
+                "-ss", QString::number(pos, 'f', 4),
+                "-i", videoPath,
+                "-frames:v", "1",
+                "-vf", "scale=96:-2",
+                "-q:v", "8",
+                outPath
+            };
+            proc->start("ffmpeg", args);
+            jobs.push_back({i, outPath, proc});
+        }
+    }
+
+    for (const Job &job : jobs) {
+        if (job.proc->state() == QProcess::Starting) {
+            job.proc->waitForStarted(1500);
+        }
+    }
+    for (const Job &job : jobs) {
+        if (!job.proc->waitForFinished(7000)) {
+            job.proc->kill();
+            job.proc->waitForFinished(1000);
+        }
+        delete job.proc;
+    }
+
+    for (int i = 0; i < count; ++i) {
+        const QString outPath = dir.filePath(QStringLiteral("thumb_%1.png").arg(i, 3, 10, QChar('0')));
+        if (QFileInfo::exists(outPath)) {
+            urls.push_back(QUrl::fromLocalFile(outPath).toString());
+        } else if (!urls.isEmpty()) {
+            urls.push_back(urls.back());
+        } else {
+            urls.push_back(QString());
+        }
+    }
+    return urls;
+}
 }
 
-AppController::AppController(QObject *parent) : QObject(parent) {}
+AppController::AppController(QObject *parent) : QObject(parent) {
+    m_thumbStepTimer.setSingleShot(true);
+    connect(&m_thumbStepTimer, &QTimer::timeout, this, &AppController::onThumbnailStepTimeout);
+}
 
 QString AppController::videoPath() const { return m_videoPath; }
 QString AppController::videoUrl() const { return m_videoUrl; }
@@ -35,6 +117,8 @@ int AppController::targetFps() const { return m_targetFps; }
 bool AppController::converting() const { return m_converting; }
 int AppController::progress() const { return m_progress; }
 QStringList AppController::thumbnailUrls() const { return m_thumbnailUrls; }
+int AppController::thumbnailsVersion() const { return m_thumbnailsVersion; }
+int AppController::thumbnailsGenerated() const { return m_thumbnailsGenerated; }
 QString AppController::errorMessage() const { return m_errorMessage; }
 QString AppController::successMessage() const { return m_successMessage; }
 double AppController::estimatedSizeMb() const {
@@ -97,7 +181,15 @@ void AppController::openVideo(const QString &filePath) {
     m_endTime = info.duration;
     m_targetWidth = std::max(100, std::min(info.width, 480));
     m_targetFps = std::max(6, std::min(info.fps, 15));
-    generateThumbnails(m_videoPath, info.duration);
+    m_thumbnailCount = 0;
+    m_thumbnailPoolCount = 0;
+    m_pendingThumbnailCount = 0;
+    m_thumbnailPoolUrls.clear();
+    m_thumbnailsGenerated = 0;
+    m_thumbWindowFrom = 0.0;
+    m_thumbWindowTo = info.duration;
+    m_thumbnailGenerating = false;
+    ensureThumbnailsForCount(12);
 
     emit videoPathChanged();
     emit videoUrlChanged();
@@ -106,6 +198,35 @@ void AppController::openVideo(const QString &filePath) {
     emit trimChanged();
     emit settingsChanged();
     emit thumbnailsChanged();
+}
+
+void AppController::ensureThumbnailsForCount(int count) {
+    ensureThumbnailsForWindow(count, 0.0, m_videoInfo.duration);
+}
+
+void AppController::ensureThumbnailsForWindow(int count, double fromSec, double toSec) {
+    if (m_videoPath.isEmpty() || m_videoInfo.duration <= 0.0) {
+        return;
+    }
+    Q_UNUSED(fromSec)
+    Q_UNUSED(toSec)
+    const double clampedFrom = 0.0;
+    const double clampedTo = m_videoInfo.duration;
+    Q_UNUSED(count)
+    const int clamped = kFixedThumbCount;
+    if (clamped == m_thumbnailCount && !m_thumbnailUrls.isEmpty()
+        && std::abs(m_thumbWindowFrom - clampedFrom) < 0.01
+        && std::abs(m_thumbWindowTo - clampedTo) < 0.01) {
+        return;
+    }
+
+    m_thumbWindowFrom = clampedFrom;
+    m_thumbWindowTo = clampedTo;
+
+    m_pendingThumbnailCount = clamped;
+    if (!m_thumbnailGenerating) {
+        startThumbnailGeneration(clamped);
+    }
 }
 
 void AppController::startConversion(const QString &outputPath) {
@@ -201,7 +322,28 @@ void AppController::clearVideo() {
     m_endTime = 0.0;
     m_targetWidth = 480;
     m_targetFps = 15;
+    m_thumbnailCount = 0;
+    m_thumbnailPoolCount = 0;
+    m_pendingThumbnailCount = 0;
+    m_thumbnailGenerating = false;
+    if (m_thumbStepTimer.isActive()) {
+        m_thumbStepTimer.stop();
+    }
+    if (m_thumbPlayer) {
+        m_thumbPlayer->stop();
+        m_thumbPlayer->deleteLater();
+        m_thumbPlayer = nullptr;
+    }
+    if (m_thumbSink) {
+        m_thumbSink->deleteLater();
+        m_thumbSink = nullptr;
+    }
+    m_thumbWindowFrom = 0.0;
+    m_thumbWindowTo = 0.0;
     m_thumbnailUrls.clear();
+    m_thumbnailsGenerated = 0;
+    m_thumbnailsVersion += 1;
+    m_thumbnailPoolUrls.clear();
     setProgress(0);
     clearMessages();
 
@@ -216,54 +358,53 @@ void AppController::clearVideo() {
     }
 }
 
-void AppController::generateThumbnails(const QString &inputPath, double duration) {
-    m_thumbnailUrls.clear();
-    if (duration <= 0.0) {
+void AppController::startThumbnailGeneration(int count) {
+    if (m_videoPath.isEmpty() || m_videoInfo.duration <= 0.0) {
         return;
     }
 
-    const QString tmpRoot = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-    if (tmpRoot.isEmpty()) {
-        return;
-    }
+    Q_UNUSED(count)
+    m_thumbTargetCount = kFixedThumbCount;
+    m_thumbnailGenerating = true;
+    m_thumbnailsGenerated = 0;
+    m_thumbnailsVersion += 1;
+    emit thumbnailsChanged();
 
-    const QByteArray key = inputPath.toUtf8() + QByteArray::number(QFileInfo(inputPath).size());
-    const QString hash = QString::fromLatin1(QCryptographicHash::hash(key, QCryptographicHash::Md5).toHex());
-    const QString dirPath = QDir(tmpRoot).filePath(QStringLiteral("telegramgifterqt_thumbs/%1").arg(hash));
-    QDir dir(dirPath);
-    if (!dir.exists()) {
-        dir.mkpath(QStringLiteral("."));
-    }
-
-    const int thumbCount = 12;
-    for (int i = 0; i < thumbCount; ++i) {
-        const double pos = (duration * (double(i) + 0.5)) / double(thumbCount);
-        const QString outPath = dir.filePath(QStringLiteral("thumb_%1.jpg").arg(i, 2, 10, QChar('0')));
-
-        if (!QFileInfo::exists(outPath)) {
-            QProcess proc;
-            QStringList args{
-                "-y",
-                "-ss", QString::number(pos, 'f', 3),
-                "-i", inputPath,
-                "-frames:v", "1",
-                "-vf", "scale=160:-2",
-                outPath
-            };
-            proc.start("ffmpeg", args);
-            if (!proc.waitForStarted(2000)) {
-                continue;
-            }
-            proc.waitForFinished(8000);
-            if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) {
-                continue;
-            }
+    QObject::disconnect(&m_thumbWatcher, nullptr, this, nullptr);
+    const QString path = m_videoPath;
+    connect(&m_thumbWatcher, &QFutureWatcher<QStringList>::finished, this, [this, path]() {
+        if (path != m_videoPath) {
+            return;
         }
+        const QStringList generated = m_thumbWatcher.result();
+        m_thumbnailUrls = generated;
+        m_thumbnailPoolUrls = generated;
+        m_thumbnailPoolCount = generated.size();
+        m_thumbnailCount = generated.size();
+        m_thumbnailsGenerated = generated.size();
+        m_pendingThumbnailCount = 0;
+        m_thumbnailGenerating = false;
+        m_thumbnailsVersion += 1;
+        emit thumbnailsChanged();
+    });
 
-        if (QFileInfo::exists(outPath)) {
-            m_thumbnailUrls.push_back(QUrl::fromLocalFile(outPath).toString());
-        }
-    }
+    const double duration = m_videoInfo.duration;
+    const int targetCount = m_thumbTargetCount;
+    m_thumbWatcher.setFuture(QtConcurrent::run([path, duration, targetCount]() {
+        return generateThumbnailsWithFfmpegFallback(path, duration, targetCount);
+    }));
+}
+
+void AppController::continueThumbnailGeneration() {
+    // unused in ffmpeg mode
+}
+
+void AppController::onThumbnailStepTimeout() {
+    // unused in ffmpeg mode
+}
+
+void AppController::finishThumbnailGeneration() {
+    m_thumbnailGenerating = false;
 }
 
 void AppController::setCurrentTime(double value) {
