@@ -240,7 +240,14 @@ Basic.ApplicationWindow {
 
                 property real timelineScale: 1.0
                 readonly property real minScale: 1.0
-                readonly property real maxScale: 20.0
+                readonly property real maxScale: {
+                    const fps = Math.max(1, appController.videoFps)
+                    const duration = Math.max(0.001, safeDuration)
+                    const viewWidth = Math.max(1, timelineFlick.width)
+                    const pxPerFrameTarget = 14.0
+                    const frameScale = (duration * fps * pxPerFrameTarget) / viewWidth
+                    return Math.max(20.0, frameScale)
+                }
 
                 function snapToFrame(t) {
                     const fps = Math.max(1, appController.videoFps)

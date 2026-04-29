@@ -216,13 +216,22 @@ void AppController::ensureThumbnailsForWindow(int count, double fromSec, double 
     if (m_videoPath.isEmpty() || m_videoInfo.duration <= 0.0) {
         return;
     }
-    const double clampedFrom = std::max(0.0, std::min(fromSec, m_videoInfo.duration));
-    const double clampedTo = std::max(clampedFrom + 0.05, std::min(toSec, m_videoInfo.duration));
+    const double visibleFrom = std::max(0.0, std::min(fromSec, m_videoInfo.duration));
+    const double visibleTo = std::max(visibleFrom + 0.05, std::min(toSec, m_videoInfo.duration));
+    const double visibleSpan = std::max(0.05, visibleTo - visibleFrom);
+    const double quantStep = std::max(0.25, visibleSpan / 8.0);
+    const double clampedFrom = std::max(0.0, std::floor(visibleFrom / quantStep) * quantStep);
+    const double clampedTo = std::min(m_videoInfo.duration,
+                                      std::max(clampedFrom + 0.05, std::ceil(visibleTo / quantStep) * quantStep));
     Q_UNUSED(count)
     const int clamped = kFixedThumbCount;
-    if (!m_thumbnailGenerating && clamped == m_thumbnailCount && !m_thumbnailUrls.isEmpty()
-        && std::abs(m_thumbWindowFrom - clampedFrom) < 0.01
-        && std::abs(m_thumbWindowTo - clampedTo) < 0.01) {
+    const bool alreadyCoversVisible = !m_thumbnailUrls.isEmpty()
+        && m_thumbWindowFrom <= visibleFrom + 0.02
+        && m_thumbWindowTo >= visibleTo - 0.02;
+
+    if (!m_thumbnailGenerating && clamped == m_thumbnailCount && alreadyCoversVisible
+        && std::abs(m_thumbWindowFrom - clampedFrom) < quantStep * 0.5
+        && std::abs(m_thumbWindowTo - clampedTo) < quantStep * 0.5) {
         return;
     }
 
