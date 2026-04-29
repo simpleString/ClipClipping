@@ -29,6 +29,8 @@ class AppController : public QObject {
     Q_PROPERTY(QStringList thumbnailUrls READ thumbnailUrls NOTIFY thumbnailsChanged)
     Q_PROPERTY(int thumbnailsVersion READ thumbnailsVersion NOTIFY thumbnailsChanged)
     Q_PROPERTY(int thumbnailsGenerated READ thumbnailsGenerated NOTIFY thumbnailsChanged)
+    Q_PROPERTY(double thumbWindowFrom READ thumbWindowFrom NOTIFY thumbnailsChanged)
+    Q_PROPERTY(double thumbWindowTo READ thumbWindowTo NOTIFY thumbnailsChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
     Q_PROPERTY(QString successMessage READ successMessage NOTIFY successMessageChanged)
     Q_PROPERTY(double estimatedSizeMb READ estimatedSizeMb NOTIFY settingsChanged)
@@ -51,6 +53,8 @@ public:
     QStringList thumbnailUrls() const;
     int thumbnailsVersion() const;
     int thumbnailsGenerated() const;
+    double thumbWindowFrom() const;
+    double thumbWindowTo() const;
     QString errorMessage() const;
     QString successMessage() const;
     double estimatedSizeMb() const;
@@ -161,4 +165,6 @@ private:
     int m_thumbRetryCount = 0;
     QImage m_lastThumbImage;
     QFutureWatcher<QStringList> m_thumbWatcher;
+    int m_thumbRequestedSeq = 0;
+    int m_thumbRunningSeq = 0;
 };

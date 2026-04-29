@@ -251,22 +251,26 @@ Basic.ApplicationWindow {
                     const newPlayheadX = (appController.currentTime / safeDuration) * timelineView.width * newScale
                     const maxContentX = Math.max(0, timelineFlick.contentWidth - timelineFlick.width)
                     timelineFlick.contentX = clamp(newPlayheadX - screenX, 0, maxContentX)
-                    const immediate = clamp(Math.round(timelineFlick.contentWidth / 220), 8, 18)
-                    appController.ensureThumbnailsForCount(immediate)
+                    requestVisibleWindowThumbs()
                     thumbsDebounce.restart()
                 }
 
                 function fitTimeline() {
                     timelinePanel.timelineScale = 1.0
                     timelineFlick.contentX = 0
+                    requestVisibleWindowThumbs()
                     thumbsDebounce.restart()
                 }
 
                 function requestAdaptiveThumbs() {
-                    const contentThumbs = Math.max(8, Math.round(timelineFlick.contentWidth / 140))
-                    const detailFactor = Math.pow(Math.max(1, timelinePanel.timelineScale), 0.45)
-                    const desired = clamp(Math.round(contentThumbs * detailFactor), 8, 36)
-                    appController.ensureThumbnailsForCount(desired)
+                    requestVisibleWindowThumbs()
+                }
+
+                function requestVisibleWindowThumbs() {
+                    const total = Math.max(1, timelineFlick.contentWidth)
+                    const from = clamp((timelineFlick.contentX / total) * safeDuration, 0, safeDuration)
+                    const to = clamp(((timelineFlick.contentX + timelineFlick.width) / total) * safeDuration, 0, safeDuration)
+                    appController.ensureThumbnailsForWindow(12, from, to)
                 }
 
                 function seekFromLocalX(localX) {
@@ -384,15 +388,6 @@ Basic.ApplicationWindow {
                         color: "#7f8a99"
                         font.pixelSize: 10
                     }
-                    Basic.Label {
-                        text: (appController.thumbnailsGenerated > 0 && appController.thumbnailUrls.length > 0)
-                            ? appController.thumbnailUrls[Math.max(0, appController.thumbnailsGenerated - 1)]
-                            : ""
-                        color: "#4f5a69"
-                        font.pixelSize: 9
-                        elide: Text.ElideMiddle
-                        width: 220
-                    }
                 }
 
                 Flickable {
@@ -407,6 +402,7 @@ Basic.ApplicationWindow {
                     contentWidth: width * timelinePanel.timelineScale
                     contentHeight: timelineView.height
                     onWidthChanged: thumbsDebounce.restart()
+                    onContentXChanged: thumbsDebounce.restart()
 
                     Rectangle {
                         id: timelineView
@@ -418,29 +414,40 @@ Basic.ApplicationWindow {
                         color: "#0d0d1a"
                         border.color: "#2a2a4a"
 
-                        Row {
+                        Item {
                             anchors.fill: parent
-                            spacing: 1
                             clip: true
 
-                            Repeater {
-                                model: appController ? appController.thumbnailUrls : []
-                                delegate: Rectangle {
-                                    width: timelineView.width / Math.max(1, (appController ? appController.thumbnailUrls.length : 1))
-                                    height: timelineView.height
-                                    color: "#111"
+                            Item {
+                                id: thumbsBand
+                                x: (appController.thumbWindowFrom / safeDuration) * timelineView.width
+                                width: Math.max(1, ((appController.thumbWindowTo - appController.thumbWindowFrom) / safeDuration) * timelineView.width)
+                                height: timelineView.height
 
-                                    Image {
-                                        anchors.fill: parent
-                                        source: (modelData && modelData.length > 0) ? modelData : ""
-                                        fillMode: Image.PreserveAspectCrop
-                                        cache: false
-                                        asynchronous: true
-                                    }
+                                Row {
+                                    anchors.fill: parent
+                                    spacing: 1
 
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        color: "#66000000"
+                                    Repeater {
+                                        model: appController ? appController.thumbnailUrls : []
+                                        delegate: Rectangle {
+                                            width: thumbsBand.width / Math.max(1, (appController ? appController.thumbnailUrls.length : 1))
+                                            height: timelineView.height
+                                            color: "#111"
+
+                                            Image {
+                                                anchors.fill: parent
+                                                source: (modelData && modelData.length > 0) ? modelData : ""
+                                                fillMode: Image.PreserveAspectCrop
+                                                cache: false
+                                                asynchronous: true
+                                            }
+
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                color: "#66000000"
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -545,8 +552,7 @@ Basic.ApplicationWindow {
                                     const newContentWidth = timelineView.width
                                     const newContentX = anchorRatio * newContentWidth - wheel.x
                                     timelineFlick.contentX = clamp(newContentX, 0, Math.max(0, timelineFlick.contentWidth - timelineFlick.width))
-                                    const immediate = clamp(Math.round(timelineFlick.contentWidth / 220), 8, 18)
-                                    appController.ensureThumbnailsForCount(immediate)
+                                    timelinePanel.requestVisibleWindowThumbs()
                                     thumbsDebounce.restart()
                                 }
                             }
