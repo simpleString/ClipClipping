@@ -1,6 +1,8 @@
 #include "AppController.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QFileDialog>
@@ -8,6 +10,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QStandardPaths>
 #include <QUrl>
 
 #include <algorithm>
@@ -31,6 +34,7 @@ int AppController::targetWidth() const { return m_targetWidth; }
 int AppController::targetFps() const { return m_targetFps; }
 bool AppController::converting() const { return m_converting; }
 int AppController::progress() const { return m_progress; }
+QStringList AppController::thumbnailUrls() const { return m_thumbnailUrls; }
 QString AppController::errorMessage() const { return m_errorMessage; }
 QString AppController::successMessage() const { return m_successMessage; }
 double AppController::estimatedSizeMb() const {
@@ -93,6 +97,7 @@ void AppController::openVideo(const QString &filePath) {
     m_endTime = info.duration;
     m_targetWidth = std::max(100, std::min(info.width, 480));
     m_targetFps = std::max(6, std::min(info.fps, 15));
+    generateThumbnails(m_videoPath, info.duration);
 
     emit videoPathChanged();
     emit videoUrlChanged();
@@ -100,6 +105,7 @@ void AppController::openVideo(const QString &filePath) {
     emit currentTimeChanged();
     emit trimChanged();
     emit settingsChanged();
+    emit thumbnailsChanged();
 }
 
 void AppController::startConversion(const QString &outputPath) {
@@ -195,6 +201,7 @@ void AppController::clearVideo() {
     m_endTime = 0.0;
     m_targetWidth = 480;
     m_targetFps = 15;
+    m_thumbnailUrls.clear();
     setProgress(0);
     clearMessages();
 
@@ -205,6 +212,57 @@ void AppController::clearVideo() {
         emit currentTimeChanged();
         emit trimChanged();
         emit settingsChanged();
+        emit thumbnailsChanged();
+    }
+}
+
+void AppController::generateThumbnails(const QString &inputPath, double duration) {
+    m_thumbnailUrls.clear();
+    if (duration <= 0.0) {
+        return;
+    }
+
+    const QString tmpRoot = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    if (tmpRoot.isEmpty()) {
+        return;
+    }
+
+    const QByteArray key = inputPath.toUtf8() + QByteArray::number(QFileInfo(inputPath).size());
+    const QString hash = QString::fromLatin1(QCryptographicHash::hash(key, QCryptographicHash::Md5).toHex());
+    const QString dirPath = QDir(tmpRoot).filePath(QStringLiteral("telegramgifterqt_thumbs/%1").arg(hash));
+    QDir dir(dirPath);
+    if (!dir.exists()) {
+        dir.mkpath(QStringLiteral("."));
+    }
+
+    const int thumbCount = 12;
+    for (int i = 0; i < thumbCount; ++i) {
+        const double pos = (duration * (double(i) + 0.5)) / double(thumbCount);
+        const QString outPath = dir.filePath(QStringLiteral("thumb_%1.jpg").arg(i, 2, 10, QChar('0')));
+
+        if (!QFileInfo::exists(outPath)) {
+            QProcess proc;
+            QStringList args{
+                "-y",
+                "-ss", QString::number(pos, 'f', 3),
+                "-i", inputPath,
+                "-frames:v", "1",
+                "-vf", "scale=160:-2",
+                outPath
+            };
+            proc.start("ffmpeg", args);
+            if (!proc.waitForStarted(2000)) {
+                continue;
+            }
+            proc.waitForFinished(8000);
+            if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) {
+                continue;
+            }
+        }
+
+        if (QFileInfo::exists(outPath)) {
+            m_thumbnailUrls.push_back(QUrl::fromLocalFile(outPath).toString());
+        }
     }
 }
 

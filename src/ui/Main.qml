@@ -20,6 +20,31 @@ Basic.ApplicationWindow {
         return Math.max(minV, Math.min(maxV, v))
     }
 
+    function formatTime(seconds) {
+        const s = Math.max(0, seconds)
+        const mins = Math.floor(s / 60)
+        const secs = Math.floor(s % 60)
+        const ds = Math.floor((s % 1) * 10)
+        return mins + ":" + (secs < 10 ? "0" : "") + secs + "." + ds
+    }
+
+    function parseTimeInput(str) {
+        const v = String(str).trim()
+        if (!v.length)
+            return -1
+        if (v.indexOf(":") >= 0) {
+            const p = v.split(":")
+            if (p.length === 2) {
+                const m = Number(p[0])
+                const s = Number(p[1])
+                if (!isNaN(m) && !isNaN(s))
+                    return m * 60 + s
+            }
+        }
+        const n = Number(v)
+        return isNaN(n) ? -1 : n
+    }
+
     function seekTo(seconds) {
         const clamped = clamp(seconds, 0, safeDuration)
         const ms = Math.round(clamped * 1000)
@@ -211,12 +236,67 @@ Basic.ApplicationWindow {
                 anchors.margins: 10
 
                 Row {
-                    spacing: 16
+                    spacing: 8
                     anchors.left: parent.left
+                    anchors.right: parent.right
                     anchors.top: parent.top
-                    Basic.Label { text: "Start: " + appController.startTime.toFixed(1) + "s"; color: "#66bb6a"; font.pixelSize: 12 }
-                    Basic.Label { text: "End: " + appController.endTime.toFixed(1) + "s"; color: "#ef5350"; font.pixelSize: 12 }
-                    Basic.Label { text: "Current: " + appController.currentTime.toFixed(1) + "s"; color: "#aaaaaa"; font.pixelSize: 12 }
+                    Basic.Label { text: "Start"; color: "#666"; font.pixelSize: 10 }
+                    Basic.TextField {
+                        id: startInput
+                        width: 80
+                        text: formatTime(appController.startTime)
+                        color: "#e0e0e0"
+                        font.pixelSize: 12
+                        selectByMouse: true
+                        background: Rectangle {
+                            radius: 4
+                            color: "#1a1a2e"
+                            border.color: startInput.activeFocus ? "#64b5f6" : "#2a2a4a"
+                        }
+                        onEditingFinished: {
+                            const t = parseTimeInput(text)
+                            if (t >= 0)
+                                appController.startTime = clamp(t, 0, appController.endTime - 0.1)
+                            text = formatTime(appController.startTime)
+                        }
+                    }
+                    Basic.Label { text: "→"; color: "#555"; font.pixelSize: 13 }
+                    Basic.Label { text: "End"; color: "#666"; font.pixelSize: 10 }
+                    Basic.TextField {
+                        id: endInput
+                        width: 80
+                        text: formatTime(appController.endTime)
+                        color: "#e0e0e0"
+                        font.pixelSize: 12
+                        selectByMouse: true
+                        background: Rectangle {
+                            radius: 4
+                            color: "#1a1a2e"
+                            border.color: endInput.activeFocus ? "#64b5f6" : "#2a2a4a"
+                        }
+                        onEditingFinished: {
+                            const t = parseTimeInput(text)
+                            if (t >= 0)
+                                appController.endTime = clamp(t, appController.startTime + 0.1, safeDuration)
+                            text = formatTime(appController.endTime)
+                        }
+                    }
+                    Rectangle {
+                        radius: 4
+                        color: "#1a1a2e"
+                        height: 24
+                        width: 74
+                        Basic.Label {
+                            anchors.centerIn: parent
+                            text: formatTime(appController.endTime - appController.startTime)
+                            color: "#aaa"
+                            font.pixelSize: 12
+                        }
+                    }
+                    Item { width: 8; height: 1 }
+                    Basic.Button { text: "-"; width: 26; height: 26; enabled: false }
+                    Rectangle { width: 40; height: 20; color: "transparent"; Basic.Label { anchors.centerIn: parent; text: "100%"; color: "#666"; font.pixelSize: 11 } }
+                    Basic.Button { text: "+"; width: 26; height: 26; enabled: false }
                 }
 
                 Rectangle {
@@ -229,6 +309,34 @@ Basic.ApplicationWindow {
                     radius: 4
                     color: "#0d0d1a"
                     border.color: "#2a2a4a"
+
+                    Row {
+                        anchors.fill: parent
+                        spacing: 1
+                        clip: true
+
+                        Repeater {
+                            model: appController.thumbnailUrls
+                            delegate: Rectangle {
+                                width: timelineTrack.width / Math.max(1, appController.thumbnailUrls.length)
+                                height: timelineTrack.height
+                                color: "#111"
+
+                                Image {
+                                    anchors.fill: parent
+                                    source: modelData
+                                    fillMode: Image.PreserveAspectCrop
+                                    cache: true
+                                    asynchronous: true
+                                }
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    color: "#66000000"
+                                }
+                            }
+                        }
+                    }
 
                     Rectangle {
                         x: (appController.startTime / safeDuration) * timelineTrack.width
@@ -249,6 +357,54 @@ Basic.ApplicationWindow {
                         color: "white"
                     }
 
+                    Rectangle {
+                        x: (appController.startTime / safeDuration) * timelineTrack.width - 6
+                        y: -4
+                        width: 12
+                        height: timelineTrack.height + 8
+                        radius: 4
+                        color: "#66bb6a"
+                        z: 3
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.SizeHorCursor
+                            onPositionChanged: (mouse) => {
+                                if (!pressed)
+                                    return
+                                const xPos = parent.mapToItem(timelineTrack, mouse.x, 0).x
+                                const t = clamp((xPos / timelineTrack.width) * safeDuration, 0, appController.endTime - 0.1)
+                                appController.startTime = t
+                                if (!startInput.activeFocus)
+                                    startInput.text = formatTime(appController.startTime)
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        x: (appController.endTime / safeDuration) * timelineTrack.width - 6
+                        y: -4
+                        width: 12
+                        height: timelineTrack.height + 8
+                        radius: 4
+                        color: "#ef5350"
+                        z: 3
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.SizeHorCursor
+                            onPositionChanged: (mouse) => {
+                                if (!pressed)
+                                    return
+                                const xPos = parent.mapToItem(timelineTrack, mouse.x, 0).x
+                                const t = clamp((xPos / timelineTrack.width) * safeDuration, appController.startTime + 0.1, safeDuration)
+                                appController.endTime = t
+                                if (!endInput.activeFocus)
+                                    endInput.text = formatTime(appController.endTime)
+                            }
+                        }
+                    }
+
                     Basic.Slider {
                         id: seekSlider
                         anchors.left: parent.left
@@ -264,61 +420,17 @@ Basic.ApplicationWindow {
                             seekTo(value)
                         }
                         background: Rectangle { color: "transparent" }
-                    }
-                }
-
-                Row {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: timelineTrack.top
-                    anchors.bottomMargin: 4
-                    spacing: 8
-
-                    Basic.Label {
-                        width: 24
-                        text: "In"
-                        color: "#66bb6a"
-                        font.pixelSize: 11
+                        opacity: 0
                     }
 
-                    Basic.Slider {
-                        id: startTrimSlider
-                        width: (parent.width - 80) / 2
-                        from: 0
-                        to: safeDuration
-                        value: 0
-                        Component.onCompleted: value = appController.startTime
-                        onValueChanged: {
-                            if (!pressed)
-                                return
-                            const t = root.clamp(value, 0, appController.endTime - 0.1)
-                            appController.startTime = t
-                            if (player.position / 1000.0 < t)
-                                seekTo(t)
-                        }
-                    }
-
-                    Basic.Label {
-                        width: 30
-                        text: "Out"
-                        color: "#ef5350"
-                        font.pixelSize: 11
-                    }
-
-                    Basic.Slider {
-                        id: endTrimSlider
-                        width: (parent.width - 80) / 2
-                        from: 0
-                        to: safeDuration
-                        value: 0
-                        Component.onCompleted: value = appController.endTime
-                        onValueChanged: {
-                            if (!pressed)
-                                return
-                            const t = root.clamp(value, appController.startTime + 0.1, safeDuration)
-                            appController.endTime = t
-                            if (player.position / 1000.0 > t)
-                                seekTo(t)
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton
+                        z: 1
+                        onPressed: (mouse) => seekTo((mouse.x / timelineTrack.width) * safeDuration)
+                        onPositionChanged: (mouse) => {
+                            if (pressed)
+                                seekTo((mouse.x / timelineTrack.width) * safeDuration)
                         }
                     }
                 }
@@ -330,10 +442,10 @@ Basic.ApplicationWindow {
                             seekSlider.value = appController.currentTime
                     }
                     function onTrimChanged() {
-                        if (!startTrimSlider.pressed)
-                            startTrimSlider.value = appController.startTime
-                        if (!endTrimSlider.pressed)
-                            endTrimSlider.value = appController.endTime
+                        if (!startInput.activeFocus)
+                            startInput.text = formatTime(appController.startTime)
+                        if (!endInput.activeFocus)
+                            endInput.text = formatTime(appController.endTime)
                     }
                 }
             }

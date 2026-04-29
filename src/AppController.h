@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QProcess>
+#include <QStringList>
 
 class AppController : public QObject {
     Q_OBJECT
@@ -18,6 +19,7 @@ class AppController : public QObject {
     Q_PROPERTY(int targetFps READ targetFps WRITE setTargetFps NOTIFY settingsChanged)
     Q_PROPERTY(bool converting READ converting NOTIFY conversionStateChanged)
     Q_PROPERTY(int progress READ progress NOTIFY conversionStateChanged)
+    Q_PROPERTY(QStringList thumbnailUrls READ thumbnailUrls NOTIFY thumbnailsChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
     Q_PROPERTY(QString successMessage READ successMessage NOTIFY successMessageChanged)
     Q_PROPERTY(double estimatedSizeMb READ estimatedSizeMb NOTIFY settingsChanged)
@@ -37,6 +39,7 @@ public:
     int targetFps() const;
     bool converting() const;
     int progress() const;
+    QStringList thumbnailUrls() const;
     QString errorMessage() const;
     QString successMessage() const;
     double estimatedSizeMb() const;
@@ -64,6 +67,7 @@ signals:
     void trimChanged();
     void settingsChanged();
     void conversionStateChanged();
+    void thumbnailsChanged();
     void errorMessageChanged();
     void successMessageChanged();
 
@@ -94,6 +98,7 @@ private:
                     double clipDuration,
                     int fps,
                     int width);
+    void generateThumbnails(const QString &inputPath, double duration);
 
     void setError(const QString &message);
     void clearMessages();
@@ -113,6 +118,7 @@ private:
 
     bool m_converting = false;
     int m_progress = 0;
+    QStringList m_thumbnailUrls;
     QString m_errorMessage;
     QString m_successMessage;
 
