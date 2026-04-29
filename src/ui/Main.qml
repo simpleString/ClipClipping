@@ -225,15 +225,44 @@ Basic.ApplicationWindow {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: hasVideo ? 118 : 0
+            Layout.preferredHeight: hasVideo ? 136 : 0
             visible: hasVideo
             color: "#16213e"
             border.color: "#2a2a4a"
             border.width: 1
 
             Item {
+                id: timelinePanel
                 anchors.fill: parent
                 anchors.margins: 10
+
+                property real timelineScale: 1.0
+                readonly property real minScale: 1.0
+                readonly property real maxScale: 20.0
+
+                function applyZoom(factor) {
+                    const oldScale = timelinePanel.timelineScale
+                    const newScale = clamp(oldScale * factor, timelinePanel.minScale, timelinePanel.maxScale)
+                    if (Math.abs(newScale - oldScale) < 0.0001)
+                        return
+
+                    const screenX = (appController.currentTime / safeDuration) * timelineView.width * oldScale - timelineFlick.contentX
+                    timelinePanel.timelineScale = newScale
+                    const newPlayheadX = (appController.currentTime / safeDuration) * timelineView.width * newScale
+                    const maxContentX = Math.max(0, timelineFlick.contentWidth - timelineFlick.width)
+                    timelineFlick.contentX = clamp(newPlayheadX - screenX, 0, maxContentX)
+                }
+
+                function fitTimeline() {
+                    timelinePanel.timelineScale = 1.0
+                    timelineFlick.contentX = 0
+                }
+
+                function seekFromLocalX(localX) {
+                    const absoluteX = clamp(timelineFlick.contentX + localX, 0, timelineFlick.contentWidth)
+                    const t = clamp((absoluteX / timelineFlick.contentWidth) * safeDuration, 0, safeDuration)
+                    seekTo(t)
+                }
 
                 Row {
                     spacing: 8
@@ -293,144 +322,197 @@ Basic.ApplicationWindow {
                             font.pixelSize: 12
                         }
                     }
+
                     Item { width: 8; height: 1 }
-                    Basic.Button { text: "-"; width: 26; height: 26; enabled: false }
-                    Rectangle { width: 40; height: 20; color: "transparent"; Basic.Label { anchors.centerIn: parent; text: "100%"; color: "#666"; font.pixelSize: 11 } }
-                    Basic.Button { text: "+"; width: 26; height: 26; enabled: false }
+
+                    Basic.Button {
+                        width: 26
+                        height: 26
+                        text: "-"
+                        enabled: timelinePanel.timelineScale > timelinePanel.minScale
+                        onClicked: timelinePanel.applyZoom(1.0 / 1.5)
+                    }
+
+                    Rectangle {
+                        width: 44
+                        height: 20
+                        color: "transparent"
+                        Basic.Label {
+                            anchors.centerIn: parent
+                            text: Math.round(timelinePanel.timelineScale * 100) + "%"
+                            color: "#666"
+                            font.pixelSize: 11
+                        }
+                    }
+
+                    Basic.Button {
+                        width: 26
+                        height: 26
+                        text: "+"
+                        enabled: timelinePanel.timelineScale < timelinePanel.maxScale
+                        onClicked: timelinePanel.applyZoom(1.5)
+                    }
+
+                    Basic.Button {
+                        width: 36
+                        height: 26
+                        text: "Fit"
+                        visible: timelinePanel.timelineScale > timelinePanel.minScale + 0.001
+                        onClicked: timelinePanel.fitTimeline()
+                    }
                 }
 
-                Rectangle {
-                    id: timelineTrack
+                Flickable {
+                    id: timelineFlick
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 8
-                    height: 54
-                    radius: 4
-                    color: "#0d0d1a"
-                    border.color: "#2a2a4a"
-
-                    Row {
-                        anchors.fill: parent
-                        spacing: 1
-                        clip: true
-
-                        Repeater {
-                            model: appController.thumbnailUrls
-                            delegate: Rectangle {
-                                width: timelineTrack.width / Math.max(1, appController.thumbnailUrls.length)
-                                height: timelineTrack.height
-                                color: "#111"
-
-                                Image {
-                                    anchors.fill: parent
-                                    source: modelData
-                                    fillMode: Image.PreserveAspectCrop
-                                    cache: true
-                                    asynchronous: true
-                                }
-
-                                Rectangle {
-                                    anchors.fill: parent
-                                    color: "#66000000"
-                                }
-                            }
-                        }
-                    }
+                    height: 64
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    contentWidth: width * timelinePanel.timelineScale
+                    contentHeight: timelineView.height
 
                     Rectangle {
-                        x: (appController.startTime / safeDuration) * timelineTrack.width
-                        width: ((appController.endTime - appController.startTime) / safeDuration) * timelineTrack.width
+                        id: timelineView
+                        x: 0
                         y: 0
-                        height: parent.height
-                        color: "#3364b5f6"
-                        border.color: "#64b5f6"
-                        border.width: 1
-                    }
-
-                    Rectangle {
-                        x: (appController.currentTime / safeDuration) * timelineTrack.width - 1
-                        y: -6
-                        width: 3
-                        height: timelineTrack.height + 12
-                        radius: 2
-                        color: "white"
-                    }
-
-                    Rectangle {
-                        x: (appController.startTime / safeDuration) * timelineTrack.width - 6
-                        y: -4
-                        width: 12
-                        height: timelineTrack.height + 8
+                        width: timelineFlick.contentWidth
+                        height: timelineFlick.height
                         radius: 4
-                        color: "#66bb6a"
-                        z: 3
+                        color: "#0d0d1a"
+                        border.color: "#2a2a4a"
+
+                        Row {
+                            anchors.fill: parent
+                            spacing: 1
+                            clip: true
+
+                            Repeater {
+                                model: appController.thumbnailUrls
+                                delegate: Rectangle {
+                                    width: timelineView.width / Math.max(1, appController.thumbnailUrls.length)
+                                    height: timelineView.height
+                                    color: "#111"
+
+                                    Image {
+                                        anchors.fill: parent
+                                        source: modelData
+                                        fillMode: Image.PreserveAspectCrop
+                                        cache: true
+                                        asynchronous: true
+                                    }
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        color: "#66000000"
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            x: (appController.startTime / safeDuration) * timelineView.width
+                            width: ((appController.endTime - appController.startTime) / safeDuration) * timelineView.width
+                            y: 0
+                            height: parent.height
+                            color: "#3364b5f6"
+                            border.color: "#64b5f6"
+                            border.width: 1
+                        }
+
+                        Rectangle {
+                            x: (appController.currentTime / safeDuration) * timelineView.width - 1
+                            y: -6
+                            width: 3
+                            height: timelineView.height + 12
+                            radius: 2
+                            color: "white"
+                            z: 4
+                        }
+
+                        Rectangle {
+                            x: (appController.startTime / safeDuration) * timelineView.width - 7
+                            y: -4
+                            width: 14
+                            height: timelineView.height + 8
+                            radius: 4
+                            color: "#66bb6a"
+                            z: 5
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.SizeHorCursor
+                                drag.target: parent
+                                drag.axis: Drag.XAxis
+                                drag.minimumX: -7
+                                drag.maximumX: ((appController.endTime / safeDuration) * timelineView.width) - 14
+                                onPositionChanged: {
+                                    const t = clamp((parent.x + 7) / timelineView.width * safeDuration, 0, appController.endTime - 0.1)
+                                    appController.startTime = t
+                                    if (!startInput.activeFocus)
+                                        startInput.text = formatTime(appController.startTime)
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            x: (appController.endTime / safeDuration) * timelineView.width - 7
+                            y: -4
+                            width: 14
+                            height: timelineView.height + 8
+                            radius: 4
+                            color: "#ef5350"
+                            z: 5
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.SizeHorCursor
+                                drag.target: parent
+                                drag.axis: Drag.XAxis
+                                drag.minimumX: ((appController.startTime / safeDuration) * timelineView.width)
+                                drag.maximumX: timelineView.width - 7
+                                onPositionChanged: {
+                                    const t = clamp((parent.x + 7) / timelineView.width * safeDuration, appController.startTime + 0.1, safeDuration)
+                                    appController.endTime = t
+                                    if (!endInput.activeFocus)
+                                        endInput.text = formatTime(appController.endTime)
+                                }
+                            }
+                        }
 
                         MouseArea {
+                            id: timelineSeekArea
                             anchors.fill: parent
-                            cursorShape: Qt.SizeHorCursor
+                            z: 2
+                            onPressed: (mouse) => {
+                                const t = clamp((mouse.x / timelineView.width) * safeDuration, 0, safeDuration)
+                                seekTo(t)
+                            }
                             onPositionChanged: (mouse) => {
                                 if (!pressed)
                                     return
-                                const xPos = parent.mapToItem(timelineTrack, mouse.x, 0).x
-                                const t = clamp((xPos / timelineTrack.width) * safeDuration, 0, appController.endTime - 0.1)
-                                appController.startTime = t
-                                if (!startInput.activeFocus)
-                                    startInput.text = formatTime(appController.startTime)
+                                const t = clamp((mouse.x / timelineView.width) * safeDuration, 0, safeDuration)
+                                seekTo(t)
                             }
-                        }
-                    }
+                            onWheel: (wheel) => {
+                                if (wheel.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.MetaModifier)) {
+                                    wheel.accepted = true
+                                    const oldScale = timelinePanel.timelineScale
+                                    const factor = wheel.angleDelta.y > 0 ? 1.2 : 1 / 1.2
+                                    const newScale = clamp(oldScale * factor, timelinePanel.minScale, timelinePanel.maxScale)
+                                    if (Math.abs(newScale - oldScale) < 0.0001)
+                                        return
 
-                    Rectangle {
-                        x: (appController.endTime / safeDuration) * timelineTrack.width - 6
-                        y: -4
-                        width: 12
-                        height: timelineTrack.height + 8
-                        radius: 4
-                        color: "#ef5350"
-                        z: 3
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.SizeHorCursor
-                            onPositionChanged: (mouse) => {
-                                if (!pressed)
-                                    return
-                                const xPos = parent.mapToItem(timelineTrack, mouse.x, 0).x
-                                const t = clamp((xPos / timelineTrack.width) * safeDuration, appController.startTime + 0.1, safeDuration)
-                                appController.endTime = t
-                                if (!endInput.activeFocus)
-                                    endInput.text = formatTime(appController.endTime)
+                                    const anchorAbsX = timelineFlick.contentX + wheel.x
+                                    const anchorRatio = anchorAbsX / Math.max(1, timelineFlick.contentWidth)
+                                    timelinePanel.timelineScale = newScale
+                                    const newContentWidth = timelineView.width
+                                    const newContentX = anchorRatio * newContentWidth - wheel.x
+                                    timelineFlick.contentX = clamp(newContentX, 0, Math.max(0, timelineFlick.contentWidth - timelineFlick.width))
+                                }
                             }
-                        }
-                    }
-
-                    Basic.Slider {
-                        id: seekSlider
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        from: 0
-                        to: safeDuration
-                        value: 0
-                        Component.onCompleted: value = appController.currentTime
-                        onValueChanged: {
-                            if (!pressed)
-                                return
-                            seekTo(value)
-                        }
-                        background: Rectangle { color: "transparent" }
-                        opacity: 0
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        acceptedButtons: Qt.LeftButton
-                        z: 1
-                        onPressed: (mouse) => seekTo((mouse.x / timelineTrack.width) * safeDuration)
-                        onPositionChanged: (mouse) => {
-                            if (pressed)
-                                seekTo((mouse.x / timelineTrack.width) * safeDuration)
                         }
                     }
                 }
@@ -438,8 +520,13 @@ Basic.ApplicationWindow {
                 Connections {
                     target: appController
                     function onCurrentTimeChanged() {
-                        if (!seekSlider.pressed)
-                            seekSlider.value = appController.currentTime
+                        if (timelinePanel.timelineScale <= 1.001)
+                            return
+                        const playheadX = (appController.currentTime / safeDuration) * timelineView.width
+                        const left = timelineFlick.contentX
+                        const right = timelineFlick.contentX + timelineFlick.width
+                        if (playheadX < left || playheadX > right)
+                            timelineFlick.contentX = clamp(playheadX - timelineFlick.width * 0.5, 0, Math.max(0, timelineFlick.contentWidth - timelineFlick.width))
                     }
                     function onTrimChanged() {
                         if (!startInput.activeFocus)
