@@ -1,0 +1,17 @@
+build/
+.qt/
+
+*.user
+*.user.*
+*.autosave
+
+*.o
+*.obj
+*.so
+*.a
+*.dll
+*.dylib
+*.exe
+
+compile_commands.json
+.DS_Store
