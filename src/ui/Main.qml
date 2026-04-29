@@ -66,6 +66,44 @@ Basic.ApplicationWindow {
         }
     }
 
+    Shortcut {
+        sequences: ["I", "Ш"]
+        enabled: hasVideo && !startInput.activeFocus && !endInput.activeFocus
+        onActivated: {
+            const frameSec = 1.0 / Math.max(1, appController.videoFps)
+            const minGap = Math.max(0.001, frameSec)
+            appController.startTime = clamp(appController.currentTime, 0, appController.endTime - minGap)
+        }
+    }
+
+    Shortcut {
+        sequences: ["O", "Щ"]
+        enabled: hasVideo && !startInput.activeFocus && !endInput.activeFocus
+        onActivated: {
+            const frameSec = 1.0 / Math.max(1, appController.videoFps)
+            const minGap = Math.max(0.001, frameSec)
+            appController.endTime = clamp(appController.currentTime, appController.startTime + minGap, safeDuration)
+        }
+    }
+
+    Shortcut {
+        sequence: "Left"
+        enabled: hasVideo && !startInput.activeFocus && !endInput.activeFocus
+        onActivated: {
+            const frameSec = 1.0 / Math.max(1, appController.videoFps)
+            seekTo(appController.currentTime - frameSec)
+        }
+    }
+
+    Shortcut {
+        sequence: "Right"
+        enabled: hasVideo && !startInput.activeFocus && !endInput.activeFocus
+        onActivated: {
+            const frameSec = 1.0 / Math.max(1, appController.videoFps)
+            seekTo(appController.currentTime + frameSec)
+        }
+    }
+
     Rectangle {
         anchors.fill: parent
         color: "#1a1a2e"
