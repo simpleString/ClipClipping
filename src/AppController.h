@@ -46,6 +46,7 @@ public:
     Q_INVOKABLE void openSaveGifDialog();
     Q_INVOKABLE void startConversion(const QString &outputPath);
     Q_INVOKABLE void cancelConversion();
+    Q_INVOKABLE void clearVideo();
     bool hasVideo() const;
 
 public slots:

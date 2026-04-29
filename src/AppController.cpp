@@ -182,6 +182,32 @@ void AppController::cancelConversion() {
     }
 }
 
+void AppController::clearVideo() {
+    if (m_converting) {
+        cancelConversion();
+    }
+    const bool hadVideo = !m_videoPath.isEmpty();
+    m_videoPath.clear();
+    m_videoUrl.clear();
+    m_videoInfo = {};
+    m_currentTime = 0.0;
+    m_startTime = 0.0;
+    m_endTime = 0.0;
+    m_targetWidth = 480;
+    m_targetFps = 15;
+    setProgress(0);
+    clearMessages();
+
+    if (hadVideo) {
+        emit videoPathChanged();
+        emit videoUrlChanged();
+        emit videoMetaChanged();
+        emit currentTimeChanged();
+        emit trimChanged();
+        emit settingsChanged();
+    }
+}
+
 void AppController::setCurrentTime(double value) {
     const double clamped = std::max(0.0, std::min(value, m_videoInfo.duration));
     if (qFuzzyCompare(clamped + 1.0, m_currentTime + 1.0)) {
