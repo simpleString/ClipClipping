@@ -273,7 +273,7 @@ Basic.ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 6
-                text: "Space: play/pause | Click: play/pause | Ctrl+drag: pan | Ctrl+wheel or Alt+/-: zoom"
+                text: "Space: play/pause | Click: play/pause | Ctrl+drag: pan | Alt+wheel or Alt+/-: zoom"
                 color: "#66ffffff"
                 font.pixelSize: 10
             }
@@ -605,7 +605,7 @@ Basic.ApplicationWindow {
 
                             cursorShape: panMode
                                 ? (pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor)
-                                : (((Qt.application.keyboardModifiers & Qt.ControlModifier) !== 0) ? Qt.OpenHandCursor : Qt.ArrowCursor)
+                                : Qt.ArrowCursor
 
                             property real lastX: 0
                             property bool panMode: false
@@ -658,9 +658,7 @@ Basic.ApplicationWindow {
                                 const isAltPressed = ((typeof keyState !== "undefined") && keyState.altPressed)
                                     || ((wheel.modifiers & Qt.AltModifier) !== 0)
                                     || ((Qt.application.keyboardModifiers & Qt.AltModifier) !== 0)
-                                const isCtrlPressed = ((wheel.modifiers & Qt.ControlModifier) !== 0)
-                                    || ((Qt.application.keyboardModifiers & Qt.ControlModifier) !== 0)
-                                if (!isAltPressed && !isCtrlPressed)
+                                if (!isAltPressed)
                                     return
                                 const deltaY = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y
                                 if (deltaY === 0)
