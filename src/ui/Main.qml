@@ -516,7 +516,6 @@ Basic.ApplicationWindow {
                                                 anchors.fill: parent
                                                 source: (modelData && modelData.length > 0) ? modelData : ""
                                                 fillMode: Image.PreserveAspectCrop
-                                                cache: false
                                                 asynchronous: true
                                             }
 

@@ -383,9 +383,6 @@ void AppController::startThumbnailGeneration(int count) {
     m_thumbTargetCount = kFixedThumbCount;
     m_thumbnailGenerating = true;
     m_thumbRunningSeq = m_thumbRequestedSeq;
-    m_thumbnailsGenerated = 0;
-    m_thumbnailsVersion += 1;
-    emit thumbnailsChanged();
 
     QObject::disconnect(&m_thumbWatcher, nullptr, this, nullptr);
     const QString path = m_videoPath;
