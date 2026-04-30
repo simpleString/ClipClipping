@@ -54,6 +54,22 @@ Basic.ApplicationWindow {
         appController.currentTime = clamped
     }
 
+    function applyMarkIn() {
+        if (!hasVideo || startInput.activeFocus || endInput.activeFocus)
+            return
+        const frameSec = 1.0 / Math.max(1, appController.videoFps)
+        const minGap = Math.max(0.001, frameSec)
+        appController.startTime = clamp(appController.currentTime, 0, appController.endTime - minGap)
+    }
+
+    function applyMarkOut() {
+        if (!hasVideo || startInput.activeFocus || endInput.activeFocus)
+            return
+        const frameSec = 1.0 / Math.max(1, appController.videoFps)
+        const minGap = Math.max(0.001, frameSec)
+        appController.endTime = clamp(appController.currentTime, appController.startTime + minGap, safeDuration)
+    }
+
     MediaPlayer {
         id: player
         source: appController.videoUrl
@@ -61,29 +77,18 @@ Basic.ApplicationWindow {
         onPositionChanged: appController.currentTime = player.position / 1000.0
         onMediaStatusChanged: {
             if (mediaStatus === MediaPlayer.LoadedMedia) {
+                player.play()
+                player.pause()
+                player.position = 0
                 appController.currentTime = 0
             }
         }
     }
 
-    Shortcut {
-        sequences: ["I", "Ш"]
-        enabled: hasVideo && !startInput.activeFocus && !endInput.activeFocus
-        onActivated: {
-            const frameSec = 1.0 / Math.max(1, appController.videoFps)
-            const minGap = Math.max(0.001, frameSec)
-            appController.startTime = clamp(appController.currentTime, 0, appController.endTime - minGap)
-        }
-    }
-
-    Shortcut {
-        sequences: ["O", "Щ"]
-        enabled: hasVideo && !startInput.activeFocus && !endInput.activeFocus
-        onActivated: {
-            const frameSec = 1.0 / Math.max(1, appController.videoFps)
-            const minGap = Math.max(0.001, frameSec)
-            appController.endTime = clamp(appController.currentTime, appController.startTime + minGap, safeDuration)
-        }
+    Connections {
+        target: keyState
+        function onMarkInPressed() { applyMarkIn() }
+        function onMarkOutPressed() { applyMarkOut() }
     }
 
     Shortcut {

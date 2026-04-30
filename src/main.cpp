@@ -38,6 +38,8 @@ public:
 signals:
     void altPressedChanged();
     void altWheel(int delta);
+    void markInPressed();
+    void markOutPressed();
 
 private:
     void poll() {
@@ -68,7 +70,29 @@ public:
         }
 
         const MSG *msg = static_cast<MSG *>(message);
-        if (!msg || msg->message != WM_MOUSEWHEEL) {
+        if (!msg) {
+            return false;
+        }
+
+        if (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) {
+            const WPARAM vk = msg->wParam;
+            if (vk == 0x49) {
+                QMetaObject::invokeMethod(
+                    m_tracker,
+                    [this]() { emit m_tracker->markInPressed(); },
+                    Qt::QueuedConnection
+                );
+            } else if (vk == 0x4F) {
+                QMetaObject::invokeMethod(
+                    m_tracker,
+                    [this]() { emit m_tracker->markOutPressed(); },
+                    Qt::QueuedConnection
+                );
+            }
+            return false;
+        }
+
+        if (msg->message != WM_MOUSEWHEEL) {
             return false;
         }
 
