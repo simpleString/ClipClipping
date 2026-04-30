@@ -104,6 +104,22 @@ Basic.ApplicationWindow {
         }
     }
 
+    Shortcut {
+        sequences: ["Alt++", "Alt+=", "Alt+Up"]
+        enabled: hasVideo && !startInput.activeFocus && !endInput.activeFocus
+        onActivated: {
+            timelinePanel.applyZoom(1.2)
+        }
+    }
+
+    Shortcut {
+        sequences: ["Alt+-", "Alt+_", "Alt+Down"]
+        enabled: hasVideo && !startInput.activeFocus && !endInput.activeFocus
+        onActivated: {
+            timelinePanel.applyZoom(1.0 / 1.2)
+        }
+    }
+
     Rectangle {
         anchors.fill: parent
         color: "#1a1a2e"
@@ -257,7 +273,7 @@ Basic.ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 6
-                text: "Space: play/pause | Click: play/pause"
+                text: "Space: play/pause | Click: play/pause | Ctrl+drag: pan | Ctrl+wheel or Alt+/-: zoom"
                 color: "#66ffffff"
                 font.pixelSize: 10
             }
@@ -453,6 +469,7 @@ Basic.ApplicationWindow {
                     anchors.bottomMargin: 8
                     height: 64
                     clip: true
+                    interactive: false
                     boundsBehavior: Flickable.StopAtBounds
                     contentWidth: width * timelinePanel.timelineScale
                     contentHeight: timelineView.height
@@ -579,38 +596,77 @@ Basic.ApplicationWindow {
                         }
 
                         MouseArea {
-                            id: timelineSeekArea
+                            id: timelineInputArea
                             anchors.fill: parent
-                            z: 2
-                            onPressed: (mouse) => {
-                                const t = clamp((mouse.x / timelineView.width) * safeDuration, 0, safeDuration)
-                                seekTo(t)
+                            z: 10
+                            hoverEnabled: true
+                            preventStealing: true
+                            acceptedButtons: Qt.LeftButton
+
+                            cursorShape: panMode
+                                ? (pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor)
+                                : (((Qt.application.keyboardModifiers & Qt.ControlModifier) !== 0) ? Qt.OpenHandCursor : Qt.ArrowCursor)
+
+                            property real lastX: 0
+                            property bool panMode: false
+
+                            function applyZoom(deltaY) {
+                                const oldScale = timelinePanel.timelineScale
+                                const factor = deltaY > 0 ? 1.2 : (1 / 1.2)
+                                const newScale = clamp(oldScale * factor, timelinePanel.minScale, timelinePanel.maxScale)
+                                if (Math.abs(newScale - oldScale) < 0.0001)
+                                    return
+                                const oldContentWidth = timelineFlick.width * oldScale
+                                const playheadOldX = (appController.currentTime / safeDuration) * oldContentWidth
+                                const screenX = playheadOldX - timelineFlick.contentX
+                                timelinePanel.timelineScale = newScale
+                                const newContentWidth = timelineFlick.width * newScale
+                                const playheadNewX = (appController.currentTime / safeDuration) * newContentWidth
+                                timelineFlick.contentX = clamp(playheadNewX - screenX, 0, Math.max(0, timelineFlick.contentWidth - timelineFlick.width))
+                                timelinePanel.requestVisibleWindowThumbs()
+                                thumbsDebounce.restart()
                             }
-                            onPositionChanged: (mouse) => {
-                                if (!pressed)
+
+                            onPressed: (mouse) => {
+                                panMode = (mouse.modifiers & Qt.ControlModifier) !== 0
+                                lastX = mouse.x
+                                if (panMode)
                                     return
                                 const t = clamp((mouse.x / timelineView.width) * safeDuration, 0, safeDuration)
                                 seekTo(t)
                             }
-                            onWheel: (wheel) => {
-                                if (wheel.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.MetaModifier)) {
-                                    wheel.accepted = true
-                                    const oldScale = timelinePanel.timelineScale
-                                    const factor = wheel.angleDelta.y > 0 ? 1.2 : 1 / 1.2
-                                    const newScale = clamp(oldScale * factor, timelinePanel.minScale, timelinePanel.maxScale)
-                                    if (Math.abs(newScale - oldScale) < 0.0001)
-                                        return
 
-                                    const oldContentWidth = timelineFlick.width * oldScale
-                                    const playheadOldX = (appController.currentTime / safeDuration) * oldContentWidth
-                                    const screenX = playheadOldX - timelineFlick.contentX
-                                    timelinePanel.timelineScale = newScale
-                                    const newContentWidth = timelineFlick.width * newScale
-                                    const playheadNewX = (appController.currentTime / safeDuration) * newContentWidth
-                                    timelineFlick.contentX = clamp(playheadNewX - screenX, 0, Math.max(0, timelineFlick.contentWidth - timelineFlick.width))
-                                    timelinePanel.requestVisibleWindowThumbs()
-                                    thumbsDebounce.restart()
+                            onReleased: {
+                                panMode = false
+                            }
+
+                            onPositionChanged: (mouse) => {
+                                if (!pressed)
+                                    return
+                                if (panMode) {
+                                    const dx = mouse.x - lastX
+                                    const maxX = Math.max(0, timelineFlick.contentWidth - timelineFlick.width)
+                                    timelineFlick.contentX = clamp(timelineFlick.contentX - dx, 0, maxX)
+                                    lastX = mouse.x
+                                    return
                                 }
+                                const t = clamp((mouse.x / timelineView.width) * safeDuration, 0, safeDuration)
+                                seekTo(t)
+                            }
+
+                            onWheel: (wheel) => {
+                                const isAltPressed = ((typeof keyState !== "undefined") && keyState.altPressed)
+                                    || ((wheel.modifiers & Qt.AltModifier) !== 0)
+                                    || ((Qt.application.keyboardModifiers & Qt.AltModifier) !== 0)
+                                const isCtrlPressed = ((wheel.modifiers & Qt.ControlModifier) !== 0)
+                                    || ((Qt.application.keyboardModifiers & Qt.ControlModifier) !== 0)
+                                if (!isAltPressed && !isCtrlPressed)
+                                    return
+                                const deltaY = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y
+                                if (deltaY === 0)
+                                    return
+                                wheel.accepted = true
+                                applyZoom(deltaY)
                             }
                         }
                     }
@@ -635,6 +691,17 @@ Basic.ApplicationWindow {
                     }
                     function onVideoPathChanged() {
                         thumbsDebounce.restart()
+                    }
+                }
+
+                Connections {
+                    target: keyState
+                    function onAltWheel(delta) {
+                        if (!hasVideo)
+                            return
+                        if (!timelineInputArea.containsMouse)
+                            return
+                        timelineInputArea.applyZoom(delta)
                     }
                 }
 

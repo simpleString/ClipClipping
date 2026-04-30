@@ -10,6 +10,7 @@ set(CMAKE_AUTOUIC ON)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Multimedia Concurrent Widgets)
 
 qt_standard_project_setup()
+qt_policy(SET QTP0001 NEW)
 
 qt_add_executable(telegramGifterQt
     src/main.cpp
