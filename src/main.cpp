@@ -2,6 +2,8 @@
 #include <QAbstractNativeEventFilter>
 #include <QByteArray>
 #include <QMetaObject>
+#include <QEvent>
+#include <QKeyEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -20,10 +22,12 @@ class KeyStateTracker : public QObject {
 
 public:
     explicit KeyStateTracker(QObject *parent = nullptr) : QObject(parent) {
+#ifdef Q_OS_WIN
         m_timer.setInterval(30);
         connect(&m_timer, &QTimer::timeout, this, &KeyStateTracker::poll);
         m_timer.start();
         poll();
+#endif
     }
 
     bool altPressed() const { return m_altPressed; }
@@ -31,8 +35,31 @@ public:
 #ifdef Q_OS_WIN
         return (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
 #else
-        return false;
+        return m_altPressed;
 #endif
+    }
+
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        Q_UNUSED(watched)
+        if (!event) {
+            return false;
+        }
+
+        if (event->type() == QEvent::KeyPress) {
+            const auto *keyEvent = static_cast<QKeyEvent *>(event);
+            if (keyEvent->key() == Qt::Key_Alt) {
+                setAltPressed(true);
+            }
+        } else if (event->type() == QEvent::KeyRelease) {
+            const auto *keyEvent = static_cast<QKeyEvent *>(event);
+            if (keyEvent->key() == Qt::Key_Alt) {
+                setAltPressed(false);
+            }
+        } else if (event->type() == QEvent::ApplicationDeactivate) {
+            setAltPressed(false);
+        }
+
+        return false;
     }
 
 signals:
@@ -42,16 +69,19 @@ signals:
     void markOutPressed();
 
 private:
-    void poll() {
-        bool value = false;
-#ifdef Q_OS_WIN
-        value = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
-#endif
+    void setAltPressed(bool value) {
         if (value == m_altPressed) {
             return;
         }
         m_altPressed = value;
         emit altPressedChanged();
+    }
+
+    void poll() {
+#ifdef Q_OS_WIN
+        const bool value = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+        setAltPressed(value);
+#endif
     }
 
     bool m_altPressed = false;
@@ -124,6 +154,7 @@ int main(int argc, char *argv[]) {
 
     AppController controller;
     KeyStateTracker keyState;
+    app.installEventFilter(&keyState);
 #ifdef Q_OS_WIN
     AltWheelNativeFilter altWheelFilter(&keyState);
     app.installNativeEventFilter(&altWheelFilter);

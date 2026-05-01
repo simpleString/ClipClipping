@@ -713,17 +713,54 @@ Basic.ApplicationWindow {
                                 seekTo(t)
                             }
 
+                            function wheelDeltaValue(wheel) {
+                                const ay = (wheel.angleDelta && wheel.angleDelta.y !== undefined) ? wheel.angleDelta.y : 0
+                                const ax = (wheel.angleDelta && wheel.angleDelta.x !== undefined) ? wheel.angleDelta.x : 0
+                                const py = (wheel.pixelDelta && wheel.pixelDelta.y !== undefined) ? wheel.pixelDelta.y : 0
+                                const px = (wheel.pixelDelta && wheel.pixelDelta.x !== undefined) ? wheel.pixelDelta.x : 0
+                                if (ay !== 0)
+                                    return ay
+                                if (ax !== 0)
+                                    return ax
+                                if (py !== 0)
+                                    return py
+                                if (px !== 0)
+                                    return px
+                                if (wheel.rotation !== undefined && wheel.rotation !== 0)
+                                    return wheel.rotation
+                                return 0
+                            }
+
                             onWheel: (wheel) => {
                                 const isAltPressed = ((typeof keyState !== "undefined") && keyState.altPressed)
                                     || ((wheel.modifiers & Qt.AltModifier) !== 0)
                                     || ((Qt.application.keyboardModifiers & Qt.AltModifier) !== 0)
+                                const delta = wheelDeltaValue(wheel)
                                 if (!isAltPressed)
                                     return
-                                const deltaY = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y
-                                if (deltaY === 0)
+                                if (delta === 0)
                                     return
                                 wheel.accepted = true
-                                applyZoom(deltaY)
+                                applyZoom(delta)
+                            }
+                        }
+
+                        WheelHandler {
+                            id: timelineWheelHandler
+                            target: null
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            acceptedModifiers: Qt.AltModifier
+                            onWheel: (event) => {
+                                const ay = (event.angleDelta && event.angleDelta.y !== undefined) ? event.angleDelta.y : 0
+                                const ax = (event.angleDelta && event.angleDelta.x !== undefined) ? event.angleDelta.x : 0
+                                const py = (event.pixelDelta && event.pixelDelta.y !== undefined) ? event.pixelDelta.y : 0
+                                const px = (event.pixelDelta && event.pixelDelta.x !== undefined) ? event.pixelDelta.x : 0
+                                const rotation = (event.rotation !== undefined) ? event.rotation : 0
+                                const delta = ay !== 0 ? ay : (ax !== 0 ? ax : (py !== 0 ? py : (px !== 0 ? px : rotation)))
+                                if (delta === 0)
+                                    return
+                                event.accepted = true
+                                timelineInputArea.applyZoom(delta)
                             }
                         }
                     }
