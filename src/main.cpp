@@ -49,6 +49,12 @@ public:
             const auto *keyEvent = static_cast<QKeyEvent *>(event);
             if (keyEvent->key() == Qt::Key_Alt) {
                 setAltPressed(true);
+#ifndef Q_OS_WIN
+            } else if (!keyEvent->isAutoRepeat() && isMarkInKey(*keyEvent)) {
+                emit markInPressed();
+            } else if (!keyEvent->isAutoRepeat() && isMarkOutKey(*keyEvent)) {
+                emit markOutPressed();
+#endif
             }
         } else if (event->type() == QEvent::KeyRelease) {
             const auto *keyEvent = static_cast<QKeyEvent *>(event);
@@ -69,6 +75,34 @@ signals:
     void markOutPressed();
 
 private:
+    static bool isMarkInKey(const QKeyEvent &event) {
+        if (event.key() == Qt::Key_I) {
+            return true;
+        }
+#ifdef Q_OS_WIN
+        return event.nativeVirtualKey() == 0x49;
+#elif defined(Q_OS_LINUX)
+        const quint32 sc = event.nativeScanCode();
+        return sc == 23 || sc == 31;
+#else
+        return false;
+#endif
+    }
+
+    static bool isMarkOutKey(const QKeyEvent &event) {
+        if (event.key() == Qt::Key_O) {
+            return true;
+        }
+#ifdef Q_OS_WIN
+        return event.nativeVirtualKey() == 0x4F;
+#elif defined(Q_OS_LINUX)
+        const quint32 sc = event.nativeScanCode();
+        return sc == 24 || sc == 32;
+#else
+        return false;
+#endif
+    }
+
     void setAltPressed(bool value) {
         if (value == m_altPressed) {
             return;
