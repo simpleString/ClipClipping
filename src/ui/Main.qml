@@ -15,6 +15,7 @@ Basic.ApplicationWindow {
 
     readonly property bool hasVideo: appController.hasVideo
     readonly property real safeDuration: Math.max(0.001, appController.duration)
+    property var subtitleOptions: [{ label: "Off", index: -1 }]
 
     function clamp(v, minV, maxV) {
         return Math.max(minV, Math.min(maxV, v))
@@ -54,6 +55,31 @@ Basic.ApplicationWindow {
         appController.currentTime = clamped
     }
 
+    function subtitleTrackLabel(track, idx) {
+        const title = (track && track.title) ? String(track.title).trim() : ""
+        const language = (track && track.language) ? String(track.language).trim() : ""
+        const base = title.length > 0 ? title : ("Subtitle " + (idx + 1))
+        return language.length > 0 ? (base + " (" + language + ")") : base
+    }
+
+    function rebuildSubtitleOptions() {
+        const options = [{ label: "Off", index: -1 }]
+        const tracks = player.subtitleTracks || []
+        for (let i = 0; i < tracks.length; ++i)
+            options.push({ label: subtitleTrackLabel(tracks[i], i), index: i })
+        subtitleOptions = options
+
+        const active = player.activeSubtitleTrack
+        let selected = 0
+        for (let i = 0; i < options.length; ++i) {
+            if (options[i].index === active) {
+                selected = i
+                break
+            }
+        }
+        subtitleSelect.currentIndex = selected
+    }
+
     function applyMarkIn() {
         if (!hasVideo || startInput.activeFocus || endInput.activeFocus)
             return
@@ -74,15 +100,25 @@ Basic.ApplicationWindow {
         id: player
         source: appController.videoUrl
         videoOutput: videoSurface
+        audioOutput: playerAudio
         onPositionChanged: appController.currentTime = player.position / 1000.0
+        onSubtitleTracksChanged: rebuildSubtitleOptions()
+        onActiveSubtitleTrackChanged: rebuildSubtitleOptions()
         onMediaStatusChanged: {
             if (mediaStatus === MediaPlayer.LoadedMedia) {
                 player.play()
                 player.pause()
                 player.position = 0
                 appController.currentTime = 0
+                rebuildSubtitleOptions()
             }
         }
+    }
+
+    AudioOutput {
+        id: playerAudio
+        volume: 1.0
+        muted: true
     }
 
     Connections {
@@ -154,6 +190,25 @@ Basic.ApplicationWindow {
                 }
 
                 Item { Layout.fillWidth: true }
+
+                Basic.Button {
+                    visible: hasVideo
+                    text: playerAudio.muted ? "Sound: Off" : "Sound: On"
+                    onClicked: playerAudio.muted = !playerAudio.muted
+                    background: Rectangle {
+                        radius: 6
+                        border.width: 1
+                        border.color: parent.hovered ? "#64b5f6" : "#3a3a5a"
+                        color: "transparent"
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: parent.hovered ? "#64b5f6" : "#aaaaaa"
+                        font.pixelSize: 13
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
 
                 Basic.Button {
                     visible: hasVideo
@@ -770,6 +825,28 @@ Basic.ApplicationWindow {
                         Basic.Label { text: "Clip duration: " + (appController.endTime - appController.startTime).toFixed(1) + "s"; color: "#999"; font.pixelSize: 12 }
                         Basic.Label { text: "Estimated size: ~" + appController.estimatedSizeMb.toFixed(1) + "MB"; color: "#999"; font.pixelSize: 12 }
                         Basic.Label { text: "(Auto-optimized to fit under 10MB)"; color: "#666"; font.pixelSize: 10 }
+                    }
+
+                    Column {
+                        spacing: 4
+                        Basic.Label { text: "Subtitles"; color: "#999"; font.pixelSize: 12 }
+                        Basic.ComboBox {
+                            id: subtitleSelect
+                            width: 220
+                            model: subtitleOptions
+                            textRole: "label"
+                            enabled: subtitleOptions.length > 1
+                            onActivated: (index) => {
+                                const option = subtitleOptions[index]
+                                if (option)
+                                    player.activeSubtitleTrack = option.index
+                            }
+                            onCurrentIndexChanged: {
+                                const option = subtitleOptions[currentIndex]
+                                if (option && player.activeSubtitleTrack !== option.index)
+                                    player.activeSubtitleTrack = option.index
+                            }
+                        }
                     }
 
                     Item { Layout.fillWidth: true }
