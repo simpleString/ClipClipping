@@ -203,7 +203,7 @@ int main(int argc, char *argv[]) {
         []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection
     );
-    engine.loadFromModule("TelegramGifter", "Main");
+    engine.loadFromModule("ClipClipping", "Main");
 
     return app.exec();
 }

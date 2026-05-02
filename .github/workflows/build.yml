@@ -1,0 +1,98 @@
+name: Build
+
+on:
+  push:
+    tags-ignore: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            qt_host: linux
+          - os: windows-latest
+            qt_host: windows
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libpulse-dev
+
+      - name: Install Qt 6.5.3
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.5.3'
+          host: ${{ matrix.qt_host }}
+          target: desktop
+          modules: qtmultimedia qt5compat
+          cache: true
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Install portable bundle
+        run: cmake --install build --config Release --prefix package
+
+      - name: Add FFmpeg (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p package/tools
+          curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          tar -xf ffmpeg.tar.xz
+          ffmpeg_dir=$(find . -maxdepth 1 -type d -name 'ffmpeg-*-amd64-static' | head -n 1)
+          cp "$ffmpeg_dir/ffmpeg" package/tools/
+          cp "$ffmpeg_dir/ffprobe" package/tools/
+          chmod +x package/tools/ffmpeg package/tools/ffprobe
+
+      - name: Add FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path package/tools -Force | Out-Null
+          Invoke-WebRequest -Uri https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -OutFile ffmpeg.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg_extract -Force
+          $ffmpeg = Get-ChildItem -Path ffmpeg_extract -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          $ffprobe = Get-ChildItem -Path ffmpeg_extract -Recurse -Filter ffprobe.exe | Select-Object -First 1
+          Copy-Item $ffmpeg.FullName package/tools/ffmpeg.exe
+          Copy-Item $ffprobe.FullName package/tools/ffprobe.exe
+
+      - name: Archive portable package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: tar -czf ClipClipping-linux-portable.tar.gz -C package .
+
+      - name: Archive portable package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path package\* -DestinationPath ClipClipping-windows-portable.zip
+
+      - name: Upload Linux artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClipClipping-linux-portable
+          path: ClipClipping-linux-portable.tar.gz
+          if-no-files-found: error
+
+      - name: Upload Windows artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClipClipping-windows-portable
+          path: ClipClipping-windows-portable.zip
+          if-no-files-found: error

@@ -11,7 +11,7 @@ Basic.ApplicationWindow {
     minimumWidth: 860
     minimumHeight: 620
     visible: true
-    title: "GIF Maker"
+    title: "ClipClipping"
     color: "#1a1a2e"
 
     readonly property bool hasVideo: appController.hasVideo
@@ -265,7 +265,7 @@ Basic.ApplicationWindow {
                 anchors.rightMargin: 20
 
                 Basic.Label {
-                    text: "GIF Maker"
+                    text: "ClipClipping"
                     color: "#64b5f6"
                     font.pixelSize: 18
                     font.bold: true
@@ -496,7 +496,7 @@ Basic.ApplicationWindow {
 
                         Basic.Label {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "GIF Maker for Telegram"
+                            text: "ClipClipping for creating clip clippings"
                             color: "#e0e0e0"
                             font.pixelSize: 24
                             font.bold: true

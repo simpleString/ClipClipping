@@ -25,6 +25,20 @@ namespace {
 constexpr qint64 kMaxGifSize = 10 * 1024 * 1024;
 constexpr int kFixedThumbCount = 12;
 
+QString bundledToolPath(const QString &toolName) {
+#ifdef Q_OS_WIN
+    const QString fileName = toolName + ".exe";
+#else
+    const QString fileName = toolName;
+#endif
+    const QString fullPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("tools/%1").arg(fileName));
+    const QFileInfo fi(fullPath);
+    if (fi.exists() && fi.isFile() && fi.isExecutable()) {
+        return fullPath;
+    }
+    return toolName;
+}
+
 QStringList generateThumbnailsWithFfmpegFallback(const QString &videoPath, double duration, int count, double fromSec, double toSec) {
     QStringList urls;
     const QString tmpRoot = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
@@ -44,7 +58,7 @@ QStringList generateThumbnailsWithFfmpegFallback(const QString &videoPath, doubl
         + QByteArray::number(qint64(clampedTo * 1000.0))
         + QByteArrayLiteral("thumb_ffmpeg_parallel_v2");
     const QString hash = QString::fromLatin1(QCryptographicHash::hash(key, QCryptographicHash::Md5).toHex());
-    const QString dirPath = QDir(tmpRoot).filePath(QStringLiteral("telegramgifterqt_thumbs/%1/fallback_%2").arg(hash).arg(count));
+    const QString dirPath = QDir(tmpRoot).filePath(QStringLiteral("clipclipping_thumbs/%1/fallback_%2").arg(hash).arg(count));
     QDir dir(dirPath);
     if (!dir.exists()) {
         dir.mkpath(QStringLiteral("."));
@@ -73,7 +87,7 @@ QStringList generateThumbnailsWithFfmpegFallback(const QString &videoPath, doubl
                 "-q:v", "8",
                 outPath
             };
-            proc->start("ffmpeg", args);
+            proc->start(bundledToolPath(QStringLiteral("ffmpeg")), args);
             jobs.push_back({i, outPath, proc});
         }
     }
@@ -555,7 +569,7 @@ AppController::VideoInfo AppController::probeVideo(const QString &path, QString 
         "-show_streams",
         path
     };
-    proc.start("ffprobe", args);
+    proc.start(bundledToolPath(QStringLiteral("ffprobe")), args);
     if (!proc.waitForStarted(3000)) {
         *error = "Cannot start ffprobe. Install ffmpeg/ffprobe.";
         return {};
@@ -628,7 +642,7 @@ bool AppController::runAttempt(const QString &inputPath,
         outputPath
     };
 
-    proc.start("ffmpeg", args);
+    proc.start(bundledToolPath(QStringLiteral("ffmpeg")), args);
     if (!proc.waitForStarted(3000)) {
         m_activeFfmpeg = nullptr;
         setError("Cannot start ffmpeg. Install ffmpeg.");
