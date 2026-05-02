@@ -109,12 +109,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf AppDir
           mkdir -p AppDir/usr
           cp -a package/bin AppDir/usr/
-          cp -a package/lib AppDir/usr/
-          cp -a package/plugins AppDir/usr/
-          cp -a package/qml AppDir/usr/
           cp -a package/tools AppDir/usr/
+          rm -f AppDir/usr/bin/qt.conf
 
           mkdir -p AppDir/usr/share/applications
           cat > AppDir/usr/share/applications/clipclipping.desktop <<'EOF'
