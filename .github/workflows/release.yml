@@ -40,7 +40,7 @@ jobs:
           version: '6.5.3'
           host: ${{ matrix.qt_host }}
           target: desktop
-          modules: qtmultimedia qt5compat
+          modules: qtmultimedia qtquickcontrols2 qt5compat
           cache: true
 
       - name: Configure
@@ -57,9 +57,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          QT_PATHS_BIN=$(command -v qtpaths6 || command -v qtpaths)
-          QT_QML_DIR=$($QT_PATHS_BIN --query QT_INSTALL_QML)
-          QT_PLUGINS_DIR=$($QT_PATHS_BIN --query QT_INSTALL_PLUGINS)
+          QT_BASE="${QT_ROOT_DIR:-}"
+          if [ -z "$QT_BASE" ]; then
+            QMAKE_BIN=$(command -v qmake)
+            QT_BASE=$(dirname "$(dirname "$QMAKE_BIN")")
+          fi
+          QT_QML_DIR="$QT_BASE/qml"
+          QT_PLUGINS_DIR="$QT_BASE/plugins"
 
           mkdir -p package/bin package/qml package/plugins
 
@@ -115,6 +119,12 @@ jobs:
           $exe = "${{ github.workspace }}\package\bin\ClipClipping.exe"
           if (!(Test-Path $exe)) { throw "Executable not found: $exe" }
           windeployqt --release --qmldir "${{ github.workspace }}\src" --no-translations $exe
+          @"
+          [Paths]
+          Prefix=.
+          Plugins=plugins
+          QmlImports=qml
+          "@ | Set-Content -Path "${{ github.workspace }}\package\bin\qt.conf" -Encoding ascii
 
       - name: Archive portable package (Linux)
         if: runner.os == 'Linux'
