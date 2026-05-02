@@ -47,6 +47,37 @@ jobs:
       - name: Install portable bundle
         run: cmake --install build --config Release
 
+      - name: Fix Linux Qt runtime layout
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_PATHS_BIN=$(command -v qtpaths6 || command -v qtpaths)
+          QT_QML_DIR=$($QT_PATHS_BIN --query QT_INSTALL_QML)
+          QT_PLUGINS_DIR=$($QT_PATHS_BIN --query QT_INSTALL_PLUGINS)
+
+          mkdir -p package/bin package/qml package/plugins
+
+          cat > package/bin/qt.conf <<'EOF'
+          [Paths]
+          Prefix=..
+          Plugins=plugins
+          QmlImports=qml
+          EOF
+
+          cp -a "$QT_PLUGINS_DIR/platforms" package/plugins/
+          if [ -d "$QT_PLUGINS_DIR/wayland-shell-integration" ]; then cp -a "$QT_PLUGINS_DIR/wayland-shell-integration" package/plugins/; fi
+          if [ -d "$QT_PLUGINS_DIR/wayland-decoration-client" ]; then cp -a "$QT_PLUGINS_DIR/wayland-decoration-client" package/plugins/; fi
+          if [ -d "$QT_PLUGINS_DIR/platformthemes" ]; then cp -a "$QT_PLUGINS_DIR/platformthemes" package/plugins/; fi
+          if [ -d "$QT_PLUGINS_DIR/imageformats" ]; then cp -a "$QT_PLUGINS_DIR/imageformats" package/plugins/; fi
+          if [ -d "$QT_PLUGINS_DIR/multimedia" ]; then cp -a "$QT_PLUGINS_DIR/multimedia" package/plugins/; fi
+          if [ -d "$QT_PLUGINS_DIR/mediaservice" ]; then cp -a "$QT_PLUGINS_DIR/mediaservice" package/plugins/; fi
+
+          cp -a "$QT_QML_DIR/QtQuick" package/qml/
+          cp -a "$QT_QML_DIR/QtQuick.2" package/qml/
+          cp -a "$QT_QML_DIR/QtQml" package/qml/
+          cp -a "$QT_QML_DIR/QtMultimedia" package/qml/
+
       - name: Add FFmpeg (Linux)
         if: runner.os == 'Linux'
         shell: bash
