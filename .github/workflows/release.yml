@@ -17,7 +17,7 @@ jobs:
         include:
           - os: ubuntu-latest
             qt_host: linux
-            package_name: ClipClipping-${{ github.ref_name }}-linux-portable.tar.gz
+            package_name: ClipClipping-${{ github.ref_name }}-linux-x86_64.AppImage
           - os: windows-latest
             qt_host: windows
             package_name: ClipClipping-${{ github.ref_name }}-windows-portable.zip
@@ -104,6 +104,41 @@ jobs:
           cp "$ffmpeg_dir/ffprobe" package/tools/
           chmod +x package/tools/ffmpeg package/tools/ffprobe
 
+      - name: Build Linux AppImage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p AppDir/usr
+          cp -a package/bin AppDir/usr/
+          cp -a package/lib AppDir/usr/
+          cp -a package/plugins AppDir/usr/
+          cp -a package/qml AppDir/usr/
+          cp -a package/tools AppDir/usr/
+
+          mkdir -p AppDir/usr/share/applications
+          cat > AppDir/usr/share/applications/clipclipping.desktop <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=ClipClipping
+          Exec=ClipClipping
+          Icon=clipclipping
+          Categories=AudioVideo;Video;
+          EOF
+
+          mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
+          cat > AppDir/usr/share/icons/hicolor/scalable/apps/clipclipping.svg <<'EOF'
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+            <rect width="128" height="128" rx="20" fill="#1f2b46"/>
+            <path d="M40 34h20c18 0 30 11 30 30s-12 30-30 30H40V34zm20 50c11 0 18-7 18-20s-7-20-18-20h-8v40h8z" fill="#d8e6ff"/>
+          </svg>
+          EOF
+
+          wget -q https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
+          chmod +x linuxdeployqt-continuous-x86_64.AppImage
+          ARCH=x86_64 ./linuxdeployqt-continuous-x86_64.AppImage AppDir/usr/share/applications/clipclipping.desktop -appimage -qmldir="${{ github.workspace }}/src" -unsupported-allow-new-glibc
+          mv ClipClipping-*.AppImage "${{ matrix.package_name }}"
+
       - name: Add FFmpeg (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -156,7 +191,7 @@ jobs:
       - name: Archive portable package (Linux)
         if: runner.os == 'Linux'
         shell: bash
-        run: tar -czf "${{ matrix.package_name }}" -C package .
+        run: test -f "${{ matrix.package_name }}"
 
       - name: Archive portable package (Windows)
         if: runner.os == 'Windows'

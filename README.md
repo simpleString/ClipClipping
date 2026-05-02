@@ -93,10 +93,17 @@ git push origin v1.0.0
 
 After that, release assets are generated automatically:
 
-- `ClipClipping-vX.Y.Z-linux-portable.tar.gz`
+- `ClipClipping-vX.Y.Z-linux-x86_64.AppImage`
 - `ClipClipping-vX.Y.Z-windows-portable.zip`
 
-Both bundles include `ffmpeg` and `ffprobe` in the `tools/` directory.
+Linux AppImage and Windows bundle include `ffmpeg` and `ffprobe`.
+
+Run AppImage:
+
+```bash
+chmod +x ClipClipping-vX.Y.Z-linux-x86_64.AppImage
+./ClipClipping-vX.Y.Z-linux-x86_64.AppImage
+```
 
 ## Current scope
 

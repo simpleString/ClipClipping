@@ -182,6 +182,11 @@ int main(int argc, char *argv[]) {
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
     qputenv("QT_QUICK_CONTROLS_FALLBACK_STYLE", "Basic");
     qputenv("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", "");
+#ifdef Q_OS_LINUX
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
+        qputenv("QT_QPA_PLATFORM", "wayland;xcb");
+    }
+#endif
     QQuickStyle::setStyle("Basic");
     QApplication app(argc, argv);
     QQmlApplicationEngine engine;
