@@ -148,7 +148,7 @@ jobs:
             --plugin qt \
             --output appimage
 
-          mv ./*.AppImage "${{ matrix.package_name }}"
+          mv ClipClipping-x86_64.AppImage "${{ matrix.package_name }}"
 
       - name: Add FFmpeg (Windows)
         if: runner.os == 'Windows'
