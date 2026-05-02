@@ -20,12 +20,6 @@ qt_add_executable(ClipClipping
     src/AppController.cpp
 )
 
-qt_add_resources(ClipClipping "app_config"
-    PREFIX "/"
-    FILES
-        qtquickcontrols2.conf
-)
-
 qt_add_qml_module(ClipClipping
     URI ClipClipping
     VERSION 1.0
