@@ -73,10 +73,11 @@ jobs:
           if [ -d "$QT_PLUGINS_DIR/multimedia" ]; then cp -a "$QT_PLUGINS_DIR/multimedia" package/plugins/; fi
           if [ -d "$QT_PLUGINS_DIR/mediaservice" ]; then cp -a "$QT_PLUGINS_DIR/mediaservice" package/plugins/; fi
 
-          cp -a "$QT_QML_DIR/QtQuick" package/qml/
-          cp -a "$QT_QML_DIR/QtQuick.2" package/qml/
-          cp -a "$QT_QML_DIR/QtQml" package/qml/
-          cp -a "$QT_QML_DIR/QtMultimedia" package/qml/
+          for module_dir in QtQuick QtQuick.2 QtQml QtMultimedia; do
+            if [ -d "$QT_QML_DIR/$module_dir" ]; then
+              cp -a "$QT_QML_DIR/$module_dir" package/qml/
+            fi
+          done
 
       - name: Add FFmpeg (Linux)
         if: runner.os == 'Linux'
@@ -101,6 +102,14 @@ jobs:
           $ffprobe = Get-ChildItem -Path ffmpeg_extract -Recurse -Filter ffprobe.exe | Select-Object -First 1
           Copy-Item $ffmpeg.FullName package/tools/ffmpeg.exe
           Copy-Item $ffprobe.FullName package/tools/ffprobe.exe
+
+      - name: Fix Windows Qt runtime layout
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = "${{ github.workspace }}\package\bin\ClipClipping.exe"
+          if (!(Test-Path $exe)) { throw "Executable not found: $exe" }
+          windeployqt --release --qmldir "${{ github.workspace }}\src" --no-translations $exe
 
       - name: Archive portable package (Linux)
         if: runner.os == 'Linux'
