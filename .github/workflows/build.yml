@@ -59,8 +59,9 @@ jobs:
           fi
           QT_QML_DIR="$QT_BASE/qml"
           QT_PLUGINS_DIR="$QT_BASE/plugins"
+          QT_LIB_DIR="$QT_BASE/lib"
 
-          mkdir -p package/bin package/qml package/plugins
+          mkdir -p package/bin package/qml package/plugins package/lib
 
           cat > package/bin/qt.conf <<'EOF'
           [Paths]
@@ -76,6 +77,9 @@ jobs:
           if [ -d "$QT_PLUGINS_DIR/imageformats" ]; then cp -a "$QT_PLUGINS_DIR/imageformats" package/plugins/; fi
           if [ -d "$QT_PLUGINS_DIR/multimedia" ]; then cp -a "$QT_PLUGINS_DIR/multimedia" package/plugins/; fi
           if [ -d "$QT_PLUGINS_DIR/mediaservice" ]; then cp -a "$QT_PLUGINS_DIR/mediaservice" package/plugins/; fi
+
+          cp -a "$QT_LIB_DIR"/libQt6*.so* package/lib/ || true
+          cp -a "$QT_LIB_DIR"/libicu*.so* package/lib/ || true
 
           for module_dir in QtQuick QtQuick.2 QtQml QtMultimedia; do
             if [ -d "$QT_QML_DIR/$module_dir" ]; then

@@ -15,8 +15,18 @@ cmake --build build -j
 ```powershell
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
-.\build\bin\Release\ClipClipping.exe
+cmake --install build --config Release --prefix package
+windeployqt --release --qmldir .\src .\package\bin\ClipClipping.exe
+.\package\bin\ClipClipping.exe
 ```
+
+Windows build requires Qt runtime deployment (DLLs, plugins, QML modules).
+Running `build\...\ClipClipping.exe` directly will usually fail with missing `Qt6*.dll` errors.
+
+For portable usage, place FFmpeg tools into:
+
+- `package\tools\ffmpeg.exe`
+- `package\tools\ffprobe.exe`
 
 ## Dependencies
 
@@ -42,14 +52,21 @@ cmake --build build -j
 ```powershell
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
-.\build\bin\Release\ClipClipping.exe
+cmake --install build --config Release --prefix package
+windeployqt --release --qmldir .\src .\package\bin\ClipClipping.exe
+.\package\bin\ClipClipping.exe
 ```
 
-If your generator is single-config, executable path may be:
+If `windeployqt` is not found, use Qt Command Prompt or full path to `windeployqt.exe`
+(for example `C:\Qt\6.x.x\msvc2019_64\bin\windeployqt.exe`).
+
+If your generator is single-config, build output executable path may be:
 
 ```powershell
 .\build\bin\ClipClipping.exe
 ```
+
+but it should still be launched from deployed `package\bin\ClipClipping.exe`.
 
 ## Portable package (local)
 
