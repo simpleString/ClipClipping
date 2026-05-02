@@ -134,10 +134,22 @@ jobs:
           </svg>
           EOF
 
-          wget -q https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
-          chmod +x linuxdeployqt-continuous-x86_64.AppImage
-          ARCH=x86_64 ./linuxdeployqt-continuous-x86_64.AppImage AppDir/usr/share/applications/clipclipping.desktop -appimage -qmldir="${{ github.workspace }}/src" -unsupported-allow-new-glibc
-          mv ClipClipping-*.AppImage "${{ matrix.package_name }}"
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+          ln -sf linuxdeploy-plugin-qt-x86_64.AppImage linuxdeploy-plugin-qt
+
+          export QML_SOURCES_PATHS="${{ github.workspace }}/src"
+          export EXTRA_QT_PLUGINS="multimedia;platformthemes;wayland-shell-integration;wayland-decoration-client"
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            -e AppDir/usr/bin/ClipClipping \
+            -d AppDir/usr/share/applications/clipclipping.desktop \
+            -i AppDir/usr/share/icons/hicolor/scalable/apps/clipclipping.svg \
+            --plugin qt \
+            --output appimage
+
+          mv ./*.AppImage "${{ matrix.package_name }}"
 
       - name: Add FFmpeg (Windows)
         if: runner.os == 'Windows'
