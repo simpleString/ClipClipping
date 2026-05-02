@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Controls.Basic as Basic
 import QtQuick.Layouts
 import QtMultimedia
@@ -18,6 +19,17 @@ Basic.ApplicationWindow {
     property var subtitleOptions: [{ label: "Off", index: -1 }]
     property bool syncingSubtitleSelection: false
     property bool mediaLoadedInitDone: false
+    property bool timelineScrubbing: false
+    readonly property color buttonBg: "#1f2b46"
+    readonly property color buttonBgHover: "#26385c"
+    readonly property color buttonBorder: "#3a5078"
+    readonly property color buttonBorderHover: "#6fa7ff"
+    readonly property color buttonText: "#d8e6ff"
+    readonly property color buttonTextDisabled: "#7f90b0"
+    readonly property color fieldBg: "#131d33"
+    readonly property color fieldBorder: "#34507a"
+    readonly property color fieldBorderFocus: "#6fa7ff"
+    readonly property color panelBg: "#111a2c"
 
     function clamp(v, minV, maxV) {
         return Math.max(minV, Math.min(maxV, v))
@@ -54,6 +66,12 @@ Basic.ApplicationWindow {
         const clamped = clamp(snapped, 0, safeDuration)
         const ms = Math.round(clamped * 1000)
         player.position = ms
+        appController.currentTime = clamped
+    }
+
+    function scrubTo(seconds) {
+        const clamped = clamp(seconds, 0, safeDuration)
+        player.position = Math.round(clamped * 1000)
         appController.currentTime = clamped
     }
 
@@ -100,6 +118,48 @@ Basic.ApplicationWindow {
         appController.endTime = clamp(appController.currentTime, appController.startTime + minGap, safeDuration)
     }
 
+    function togglePlayback() {
+        if (!hasVideo)
+            return
+        if (player.playbackState === MediaPlayer.PlayingState)
+            player.pause()
+        else
+            player.play()
+    }
+
+    function clearEditFocus() {
+        if (startInput)
+            startInput.focus = false
+        if (endInput)
+            endInput.focus = false
+        if (cursorTimeInput)
+            cursorTimeInput.focus = false
+    }
+
+    function pointInsideItem(item, sceneX, sceneY) {
+        if (!item)
+            return false
+        const p = item.mapFromItem(root.contentItem, sceneX, sceneY)
+        return p.x >= 0 && p.y >= 0 && p.x <= item.width && p.y <= item.height
+    }
+
+    function clearEditFocusIfOutside(sceneX, sceneY) {
+        if (pointInsideItem(startInput, sceneX, sceneY))
+            return
+        if (pointInsideItem(endInput, sceneX, sceneY))
+            return
+        if (pointInsideItem(cursorTimeInput, sceneX, sceneY))
+            return
+        clearEditFocus()
+    }
+
+    TapHandler {
+        acceptedButtons: Qt.LeftButton
+        onTapped: (point) => {
+            clearEditFocusIfOutside(point.position.x, point.position.y)
+        }
+    }
+
     MediaPlayer {
         id: player
         source: appController.videoUrl
@@ -108,7 +168,11 @@ Basic.ApplicationWindow {
         onSourceChanged: {
             mediaLoadedInitDone = false
         }
-        onPositionChanged: appController.currentTime = player.position / 1000.0
+        onPositionChanged: {
+            if (timelineScrubbing)
+                return
+            appController.currentTime = player.position / 1000.0
+        }
         onSubtitleTracksChanged: {
             rebuildSubtitleOptions()
         }
@@ -137,6 +201,12 @@ Basic.ApplicationWindow {
         target: keyState
         function onMarkInPressed() { applyMarkIn() }
         function onMarkOutPressed() { applyMarkOut() }
+    }
+
+    Shortcut {
+        sequence: "Space"
+        enabled: hasVideo
+        onActivated: togglePlayback()
     }
 
     Shortcut {
@@ -204,22 +274,51 @@ Basic.ApplicationWindow {
                 Item { Layout.fillWidth: true }
 
                 Basic.Button {
+                    id: helpButton
+                    text: "?"
+                    onClicked: helpPopup.open()
+                    background: Rectangle {
+                        radius: 6
+                        border.width: 1
+                        border.color: parent.hovered ? buttonBorderHover : buttonBorder
+                        color: parent.hovered ? buttonBgHover : buttonBg
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: buttonText
+                        font.pixelSize: 16
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    implicitWidth: 34
+                    implicitHeight: 32
+                    ToolTip.visible: hovered
+                    ToolTip.text: "How to use"
+                }
+
+                Basic.Button {
                     visible: hasVideo
                     text: playerAudio.muted ? "Sound: Off" : "Sound: On"
                     onClicked: playerAudio.muted = !playerAudio.muted
                     background: Rectangle {
                         radius: 6
                         border.width: 1
-                        border.color: parent.hovered ? "#64b5f6" : "#3a3a5a"
-                        color: "transparent"
+                        border.color: parent.hovered ? buttonBorderHover : buttonBorder
+                        color: parent.hovered ? buttonBgHover : buttonBg
                     }
                     contentItem: Text {
                         text: parent.text
-                        color: parent.hovered ? "#64b5f6" : "#aaaaaa"
+                        color: parent.enabled ? buttonText : buttonTextDisabled
                         font.pixelSize: 13
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
+                    implicitHeight: 32
+                    leftPadding: 12
+                    rightPadding: 12
+                    ToolTip.visible: hovered
+                    ToolTip.text: playerAudio.muted ? "Unmute preview" : "Mute preview"
                 }
 
                 Basic.Button {
@@ -232,15 +331,99 @@ Basic.ApplicationWindow {
                     background: Rectangle {
                         radius: 6
                         border.width: 1
-                        border.color: parent.hovered ? "#64b5f6" : "#3a3a5a"
-                        color: "transparent"
+                        border.color: parent.hovered ? buttonBorderHover : buttonBorder
+                        color: parent.hovered ? buttonBgHover : buttonBg
                     }
                     contentItem: Text {
                         text: parent.text
-                        color: parent.hovered ? "#64b5f6" : "#aaaaaa"
+                        color: parent.enabled ? buttonText : buttonTextDisabled
                         font.pixelSize: 13
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
+                    }
+                    implicitHeight: 32
+                    leftPadding: 12
+                    rightPadding: 12
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Return to file selection"
+                }
+            }
+
+            Popup {
+                id: helpPopup
+                parent: Overlay.overlay
+                width: Math.min(root.width - 40, 460)
+                height: implicitHeight
+                modal: true
+                focus: true
+                anchors.centerIn: parent
+                padding: 14
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                background: Rectangle {
+                    color: panelBg
+                    border.color: "#2f466e"
+                    border.width: 1
+                    radius: 10
+                }
+
+                Column {
+                    width: helpPopup.availableWidth
+                    spacing: 8
+
+                    Basic.Label {
+                        text: "Quick Start"
+                        color: "#e8f0ff"
+                        font.pixelSize: 18
+                        font.bold: true
+                    }
+
+                    Basic.Label { text: "1. Click Select Video or drag and drop a file."; color: "#c9d7ef"; font.pixelSize: 13 }
+                    Basic.Label { text: "2. Set Start and End points on the timeline."; color: "#c9d7ef"; font.pixelSize: 13 }
+                    Basic.Label { text: "3. Adjust FPS and output width."; color: "#c9d7ef"; font.pixelSize: 13 }
+                    Basic.Label { text: "4. Choose subtitles (optional)."; color: "#c9d7ef"; font.pixelSize: 13 }
+                    Basic.Label { text: "5. Click Create GIF."; color: "#c9d7ef"; font.pixelSize: 13 }
+
+                    Rectangle { width: parent.width; height: 1; color: "#2f466e" }
+
+                    Basic.Label {
+                        text: "Keyboard Shortcuts"
+                        color: "#e8f0ff"
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+                    Basic.Label { text: "Space: Play / Pause"; color: "#c9d7ef"; font.pixelSize: 12 }
+                    Basic.Label { text: "Left / Right: Previous / Next frame"; color: "#c9d7ef"; font.pixelSize: 12 }
+                    Basic.Label { text: "I / O: Set Start / End marker"; color: "#c9d7ef"; font.pixelSize: 12 }
+                    Basic.Label { text: "Alt + Mouse Wheel: Zoom timeline"; color: "#c9d7ef"; font.pixelSize: 12 }
+                    Basic.Label { text: "Alt + + / Alt + -: Zoom in / out"; color: "#c9d7ef"; font.pixelSize: 12 }
+
+                    Item { width: 1; height: 4 }
+
+                    Row {
+                        width: parent.width
+                        Item { width: parent.width - gotItButton.implicitWidth; height: 1 }
+                        Basic.Button {
+                            id: gotItButton
+                            text: "Got it"
+                            onClicked: helpPopup.close()
+                            background: Rectangle {
+                                radius: 6
+                                border.width: 1
+                                border.color: parent.hovered ? buttonBorderHover : buttonBorder
+                                color: parent.hovered ? buttonBgHover : buttonBg
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: buttonText
+                                font.pixelSize: 14
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            implicitHeight: 34
+                            leftPadding: 16
+                            rightPadding: 16
+                        }
                     }
                 }
             }
@@ -270,10 +453,8 @@ Basic.ApplicationWindow {
                 anchors.fill: parent
                 enabled: hasVideo
                 onClicked: {
-                    if (player.playbackState === MediaPlayer.PlayingState)
-                        player.pause()
-                    else
-                        player.play()
+                    clearEditFocus()
+                    togglePlayback()
                 }
             }
 
@@ -285,8 +466,18 @@ Basic.ApplicationWindow {
                 DropArea {
                     anchors.fill: parent
                     onDropped: (drop) => {
-                        if (drop.hasUrls && drop.urls.length > 0)
-                            appController.openVideo(drop.urls[0].toLocalFile())
+                        if (drop.hasUrls && drop.urls.length > 0) {
+                            const u = drop.urls[0]
+                            if (u && typeof u.toLocalFile === "function")
+                                appController.openVideo(u.toLocalFile())
+                            else {
+                                const raw = String(u)
+                                const path = raw.indexOf("file://") === 0
+                                    ? decodeURIComponent(raw.replace("file://", ""))
+                                    : raw
+                                appController.openVideo(path)
+                            }
+                        }
                     }
                 }
 
@@ -324,11 +515,13 @@ Basic.ApplicationWindow {
                             onClicked: appController.openVideoDialog()
                             background: Rectangle {
                                 radius: 8
-                                color: parent.hovered ? "#42a5f5" : "#64b5f6"
+                                border.width: 1
+                                border.color: parent.hovered ? buttonBorderHover : buttonBorder
+                                color: parent.hovered ? buttonBgHover : buttonBg
                             }
                             contentItem: Text {
                                 text: parent.text
-                                color: "#1a1a2e"
+                                color: buttonText
                                 font.bold: true
                                 font.pixelSize: 15
                                 horizontalAlignment: Text.AlignHCenter
@@ -340,15 +533,6 @@ Basic.ApplicationWindow {
                 }
             }
 
-            Basic.Label {
-                visible: hasVideo
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 6
-                text: "Space: play/pause | Click: play/pause | Ctrl+drag: pan | Alt+wheel or Alt+/-: zoom"
-                color: "#66ffffff"
-                font.pixelSize: 10
-            }
         }
 
         Rectangle {
@@ -434,7 +618,14 @@ Basic.ApplicationWindow {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    Basic.Label { text: "Start"; color: "#666"; font.pixelSize: 10 }
+                    height: 28
+                    Basic.Label {
+                        text: "Start"
+                        color: "#8ea4c7"
+                        font.pixelSize: 10
+                        height: 26
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     Basic.TextField {
                         id: startInput
                         width: 80
@@ -442,10 +633,14 @@ Basic.ApplicationWindow {
                         color: "#e0e0e0"
                         font.pixelSize: 12
                         selectByMouse: true
+                        selectedTextColor: "#0d1527"
+                        selectionColor: "#8bb8ff"
+                        padding: 6
                         background: Rectangle {
                             radius: 4
-                            color: "#1a1a2e"
-                            border.color: startInput.activeFocus ? "#64b5f6" : "#2a2a4a"
+                            color: fieldBg
+                            border.width: 1
+                            border.color: startInput.activeFocus ? fieldBorderFocus : fieldBorder
                         }
                         onEditingFinished: {
                             const t = parseTimeInput(text)
@@ -454,8 +649,20 @@ Basic.ApplicationWindow {
                             text = formatTime(appController.startTime)
                         }
                     }
-                    Basic.Label { text: "→"; color: "#555"; font.pixelSize: 13 }
-                    Basic.Label { text: "End"; color: "#666"; font.pixelSize: 10 }
+                    Basic.Label {
+                        text: "→"
+                        color: "#55709a"
+                        font.pixelSize: 13
+                        height: 26
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    Basic.Label {
+                        text: "End"
+                        color: "#8ea4c7"
+                        font.pixelSize: 10
+                        height: 26
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     Basic.TextField {
                         id: endInput
                         width: 80
@@ -463,10 +670,14 @@ Basic.ApplicationWindow {
                         color: "#e0e0e0"
                         font.pixelSize: 12
                         selectByMouse: true
+                        selectedTextColor: "#0d1527"
+                        selectionColor: "#8bb8ff"
+                        padding: 6
                         background: Rectangle {
                             radius: 4
-                            color: "#1a1a2e"
-                            border.color: endInput.activeFocus ? "#64b5f6" : "#2a2a4a"
+                            color: fieldBg
+                            border.width: 1
+                            border.color: endInput.activeFocus ? fieldBorderFocus : fieldBorder
                         }
                         onEditingFinished: {
                             const t = parseTimeInput(text)
@@ -477,14 +688,47 @@ Basic.ApplicationWindow {
                     }
                     Rectangle {
                         radius: 4
-                        color: "#1a1a2e"
-                        height: 24
+                        color: fieldBg
+                        border.width: 1
+                        border.color: fieldBorder
+                        height: 26
                         width: 74
                         Basic.Label {
                             anchors.centerIn: parent
                             text: formatTime(appController.endTime - appController.startTime)
-                            color: "#aaa"
+                            color: "#c9d7ef"
                             font.pixelSize: 12
+                        }
+                    }
+
+                    Basic.Label {
+                        text: "Cursor"
+                        color: "#8ea4c7"
+                        font.pixelSize: 10
+                        height: 26
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    Basic.TextField {
+                        id: cursorTimeInput
+                        width: 80
+                        text: formatTime(appController.currentTime)
+                        color: "#e0e0e0"
+                        font.pixelSize: 12
+                        selectByMouse: true
+                        selectedTextColor: "#0d1527"
+                        selectionColor: "#8bb8ff"
+                        padding: 6
+                        background: Rectangle {
+                            radius: 4
+                            color: fieldBg
+                            border.width: 1
+                            border.color: cursorTimeInput.activeFocus ? fieldBorderFocus : fieldBorder
+                        }
+                        onEditingFinished: {
+                            const t = parseTimeInput(text)
+                            if (t >= 0)
+                                seekTo(clamp(t, 0, safeDuration))
+                            text = formatTime(appController.currentTime)
                         }
                     }
 
@@ -496,16 +740,32 @@ Basic.ApplicationWindow {
                         text: "-"
                         enabled: timelinePanel.timelineScale > timelinePanel.minScale
                         onClicked: timelinePanel.applyZoom(1.0 / 1.5)
+                        background: Rectangle {
+                            radius: 6
+                            border.width: 1
+                            border.color: parent.hovered ? buttonBorderHover : buttonBorder
+                            color: parent.enabled ? (parent.hovered ? buttonBgHover : buttonBg) : "#1a2337"
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: parent.enabled ? buttonText : buttonTextDisabled
+                            font.pixelSize: 14
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Zoom out (Alt+- / Alt+Down)"
                     }
 
                     Rectangle {
                         width: 44
-                        height: 20
+                        height: 26
                         color: "transparent"
                         Basic.Label {
                             anchors.centerIn: parent
                             text: Math.round(timelinePanel.timelineScale * 100) + "%"
-                            color: "#666"
+                            color: "#8ea4c7"
                             font.pixelSize: 11
                         }
                     }
@@ -516,6 +776,22 @@ Basic.ApplicationWindow {
                         text: "+"
                         enabled: timelinePanel.timelineScale < timelinePanel.maxScale
                         onClicked: timelinePanel.applyZoom(1.5)
+                        background: Rectangle {
+                            radius: 6
+                            border.width: 1
+                            border.color: parent.hovered ? buttonBorderHover : buttonBorder
+                            color: parent.enabled ? (parent.hovered ? buttonBgHover : buttonBg) : "#1a2337"
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: parent.enabled ? buttonText : buttonTextDisabled
+                            font.pixelSize: 14
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Zoom in (Alt++ / Alt+Up)"
                     }
 
                     Basic.Button {
@@ -524,13 +800,24 @@ Basic.ApplicationWindow {
                         text: "Fit"
                         visible: timelinePanel.timelineScale > timelinePanel.minScale + 0.001
                         onClicked: timelinePanel.fitTimeline()
+                        background: Rectangle {
+                            radius: 6
+                            border.width: 1
+                            border.color: parent.hovered ? buttonBorderHover : buttonBorder
+                            color: parent.hovered ? buttonBgHover : buttonBg
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: buttonText
+                            font.pixelSize: 12
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Fit timeline to window"
                     }
 
-                    Basic.Label {
-                        text: appController.thumbnailsGenerated + "/" + appController.thumbnailUrls.length
-                        color: "#7f8a99"
-                        font.pixelSize: 10
-                    }
                 }
 
                 Flickable {
@@ -632,6 +919,7 @@ Basic.ApplicationWindow {
                                 drag.axis: Drag.XAxis
                                 drag.minimumX: -7
                                 drag.maximumX: ((appController.endTime / safeDuration) * timelineView.width) - 14
+                                onPressed: clearEditFocus()
                                 onPositionChanged: {
                                     const t = timelinePanel.snapToFrame(clamp((parent.x + 7) / timelineView.width * safeDuration, 0, appController.endTime - 0.1))
                                     appController.startTime = t
@@ -657,6 +945,7 @@ Basic.ApplicationWindow {
                                 drag.axis: Drag.XAxis
                                 drag.minimumX: ((appController.startTime / safeDuration) * timelineView.width)
                                 drag.maximumX: timelineView.width - 7
+                                onPressed: clearEditFocus()
                                 onPositionChanged: {
                                     const t = timelinePanel.snapToFrame(clamp((parent.x + 7) / timelineView.width * safeDuration, appController.startTime + 0.1, safeDuration))
                                     appController.endTime = t
@@ -701,15 +990,23 @@ Basic.ApplicationWindow {
                             }
 
                             onPressed: (mouse) => {
+                                clearEditFocus()
                                 panMode = (mouse.modifiers & Qt.ControlModifier) !== 0
                                 lastX = mouse.x
                                 if (panMode)
                                     return
+                                timelineScrubbing = true
                                 const t = clamp((mouse.x / timelineView.width) * safeDuration, 0, safeDuration)
-                                seekTo(t)
+                                scrubTo(t)
                             }
 
                             onReleased: {
+                                timelineScrubbing = false
+                                panMode = false
+                            }
+
+                            onCanceled: {
+                                timelineScrubbing = false
                                 panMode = false
                             }
 
@@ -724,7 +1021,7 @@ Basic.ApplicationWindow {
                                     return
                                 }
                                 const t = clamp((mouse.x / timelineView.width) * safeDuration, 0, safeDuration)
-                                seekTo(t)
+                                scrubTo(t)
                             }
 
                             function wheelDeltaValue(wheel) {
@@ -783,6 +1080,8 @@ Basic.ApplicationWindow {
     Connections {
         target: appController
         function onCurrentTimeChanged() {
+            if (!cursorTimeInput.activeFocus)
+                cursorTimeInput.text = formatTime(appController.currentTime)
             if (timelinePanel.timelineScale <= 1.001)
                 return
                         const playheadX = (appController.currentTime / safeDuration) * timelineView.width
@@ -849,6 +1148,33 @@ Basic.ApplicationWindow {
                             from: 6
                             to: 30
                             value: appController.targetFps
+                            background: Rectangle {
+                                x: 0
+                                y: (parent.height - height) * 0.5
+                                width: parent.width
+                                height: 6
+                                radius: 3
+                                color: "#1b2740"
+                                border.width: 1
+                                border.color: "#34507a"
+
+                                Rectangle {
+                                    width: parent.width * ((parent.parent.value - parent.parent.from) / (parent.parent.to - parent.parent.from))
+                                    height: parent.height
+                                    radius: 3
+                                    color: "#5c9dff"
+                                }
+                            }
+                            handle: Rectangle {
+                                x: parent.leftPadding + parent.visualPosition * (parent.availableWidth - width)
+                                y: (parent.height - height) * 0.5
+                                implicitWidth: 14
+                                implicitHeight: 14
+                                radius: 7
+                                color: parent.pressed ? "#9ec7ff" : "#d8e6ff"
+                                border.width: 1
+                                border.color: "#4c7bc2"
+                            }
                             onValueChanged: {
                                 if (pressed)
                                     appController.targetFps = Math.round(value)
@@ -864,6 +1190,33 @@ Basic.ApplicationWindow {
                             from: 100
                             to: Math.max(100, appController.videoWidth)
                             value: appController.targetWidth
+                            background: Rectangle {
+                                x: 0
+                                y: (parent.height - height) * 0.5
+                                width: parent.width
+                                height: 6
+                                radius: 3
+                                color: "#1b2740"
+                                border.width: 1
+                                border.color: "#34507a"
+
+                                Rectangle {
+                                    width: parent.width * ((parent.parent.value - parent.parent.from) / (parent.parent.to - parent.parent.from))
+                                    height: parent.height
+                                    radius: 3
+                                    color: "#5c9dff"
+                                }
+                            }
+                            handle: Rectangle {
+                                x: parent.leftPadding + parent.visualPosition * (parent.availableWidth - width)
+                                y: (parent.height - height) * 0.5
+                                implicitWidth: 14
+                                implicitHeight: 14
+                                radius: 7
+                                color: parent.pressed ? "#9ec7ff" : "#d8e6ff"
+                                border.width: 1
+                                border.color: "#4c7bc2"
+                            }
                             onValueChanged: {
                                 if (pressed)
                                     appController.targetWidth = Math.round(value)
@@ -887,6 +1240,58 @@ Basic.ApplicationWindow {
                             model: subtitleOptions
                             textRole: "label"
                             enabled: subtitleOptions.length > 1
+                            leftPadding: 10
+                            rightPadding: 26
+                            background: Rectangle {
+                                radius: 6
+                                color: fieldBg
+                                border.width: 1
+                                border.color: subtitleSelect.activeFocus ? fieldBorderFocus : fieldBorder
+                            }
+                            contentItem: Text {
+                                text: subtitleSelect.displayText
+                                color: subtitleSelect.enabled ? buttonText : buttonTextDisabled
+                                font.pixelSize: 12
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+                            indicator: Text {
+                                x: subtitleSelect.width - width - 10
+                                y: (subtitleSelect.height - height) / 2
+                                text: "v"
+                                color: "#8fb7ff"
+                                font.pixelSize: 11
+                            }
+                            popup: Popup {
+                                y: subtitleSelect.height + 2
+                                width: subtitleSelect.width
+                                padding: 2
+                                background: Rectangle {
+                                    radius: 6
+                                    color: "#121c31"
+                                    border.width: 1
+                                    border.color: fieldBorder
+                                }
+                                contentItem: ListView {
+                                    clip: true
+                                    implicitHeight: contentHeight
+                                    model: subtitleSelect.popup.visible ? subtitleSelect.delegateModel : null
+                                }
+                            }
+                            delegate: ItemDelegate {
+                                width: subtitleSelect.width - 4
+                                contentItem: Text {
+                                    text: modelData.label
+                                    color: highlighted ? "#eaf3ff" : "#c9d7ef"
+                                    font.pixelSize: 12
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    radius: 4
+                                    color: highlighted ? "#27406a" : "transparent"
+                                }
+                            }
                             onActivated: (index) => {
                                 if (syncingSubtitleSelection)
                                     return
@@ -912,11 +1317,13 @@ Basic.ApplicationWindow {
                         onClicked: appController.openSaveGifDialog()
                         background: Rectangle {
                             radius: 8
-                            color: parent.enabled ? (parent.hovered ? "#42a5f5" : "#64b5f6") : "#446078"
+                            border.width: 1
+                            border.color: parent.enabled ? (parent.hovered ? "#ffda8a" : "#dba44b") : "#5f4f2e"
+                            color: parent.enabled ? (parent.hovered ? "#f6b14d" : "#e39b38") : "#7a6440"
                         }
                         contentItem: Text {
                             text: parent.text
-                            color: "#1a1a2e"
+                            color: "#1e1303"
                             font.bold: true
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
@@ -928,6 +1335,20 @@ Basic.ApplicationWindow {
                         text: "Cancel"
                         visible: appController.converting
                         onClicked: appController.cancelConversion()
+                        background: Rectangle {
+                            radius: 8
+                            border.width: 1
+                            border.color: parent.hovered ? buttonBorderHover : buttonBorder
+                            color: parent.hovered ? buttonBgHover : buttonBg
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: buttonText
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        padding: 10
                     }
                 }
 
@@ -939,6 +1360,18 @@ Basic.ApplicationWindow {
                         from: 0
                         to: 100
                         value: appController.progress
+                        background: Rectangle {
+                            implicitHeight: 12
+                            radius: 6
+                            color: "#1b2740"
+                            border.width: 1
+                            border.color: "#34507a"
+                        }
+                        contentItem: Rectangle {
+                            radius: 6
+                            color: "#5c9dff"
+                            width: parent.width * (parent.visualPosition || 0)
+                        }
                     }
                     Basic.Label {
                         text: appController.progress + "%"
