@@ -40,7 +40,7 @@ jobs:
           version: '6.5.3'
           host: ${{ matrix.qt_host }}
           target: desktop
-          modules: qtmultimedia qtquickcontrols2 qt5compat
+          modules: qtmultimedia qt5compat
           cache: true
 
       - name: Configure
@@ -119,9 +119,32 @@ jobs:
           $exe = "${{ github.workspace }}\package\bin\ClipClipping.exe"
           if (!(Test-Path $exe)) { throw "Executable not found: $exe" }
           windeployqt --release --qmldir "${{ github.workspace }}\src" --no-translations $exe
+
+          $qmake = (Get-Command qmake).Source
+          $qtBase = Split-Path (Split-Path $qmake -Parent) -Parent
+          $qtQml = Join-Path $qtBase "qml"
+          $qtPlugins = Join-Path $qtBase "plugins"
+
+          New-Item -ItemType Directory -Path "${{ github.workspace }}\package\qml" -Force | Out-Null
+          New-Item -ItemType Directory -Path "${{ github.workspace }}\package\plugins" -Force | Out-Null
+
+          foreach ($d in @("QtQuick", "QtQml", "QtMultimedia")) {
+            $src = Join-Path $qtQml $d
+            if (Test-Path $src) {
+              Copy-Item $src "${{ github.workspace }}\package\qml" -Recurse -Force
+            }
+          }
+
+          foreach ($d in @("platforms", "imageformats", "multimedia", "styles")) {
+            $src = Join-Path $qtPlugins $d
+            if (Test-Path $src) {
+              Copy-Item $src "${{ github.workspace }}\package\plugins" -Recurse -Force
+            }
+          }
+
           @"
           [Paths]
-          Prefix=.
+          Prefix=..
           Plugins=plugins
           QmlImports=qml
           "@ | Set-Content -Path "${{ github.workspace }}\package\bin\qt.conf" -Encoding ascii
