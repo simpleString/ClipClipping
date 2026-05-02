@@ -16,6 +16,8 @@ Basic.ApplicationWindow {
     readonly property bool hasVideo: appController.hasVideo
     readonly property real safeDuration: Math.max(0.001, appController.duration)
     property var subtitleOptions: [{ label: "Off", index: -1 }]
+    property bool syncingSubtitleSelection: false
+    property bool mediaLoadedInitDone: false
 
     function clamp(v, minV, maxV) {
         return Math.max(minV, Math.min(maxV, v))
@@ -63,6 +65,7 @@ Basic.ApplicationWindow {
     }
 
     function rebuildSubtitleOptions() {
+        syncingSubtitleSelection = true
         const options = [{ label: "Off", index: -1 }]
         const tracks = player.subtitleTracks || []
         for (let i = 0; i < tracks.length; ++i)
@@ -78,6 +81,7 @@ Basic.ApplicationWindow {
             }
         }
         subtitleSelect.currentIndex = selected
+        syncingSubtitleSelection = false
     }
 
     function applyMarkIn() {
@@ -101,11 +105,19 @@ Basic.ApplicationWindow {
         source: appController.videoUrl
         videoOutput: videoSurface
         audioOutput: playerAudio
+        onSourceChanged: {
+            mediaLoadedInitDone = false
+        }
         onPositionChanged: appController.currentTime = player.position / 1000.0
-        onSubtitleTracksChanged: rebuildSubtitleOptions()
-        onActiveSubtitleTrackChanged: rebuildSubtitleOptions()
+        onSubtitleTracksChanged: {
+            rebuildSubtitleOptions()
+        }
+        onActiveSubtitleTrackChanged: {
+            rebuildSubtitleOptions()
+        }
         onMediaStatusChanged: {
-            if (mediaStatus === MediaPlayer.LoadedMedia) {
+            if (mediaStatus === MediaPlayer.LoadedMedia && !mediaLoadedInitDone) {
+                mediaLoadedInitDone = true
                 player.play()
                 player.pause()
                 player.position = 0
@@ -669,9 +681,11 @@ Basic.ApplicationWindow {
                             property real lastX: 0
                             property bool panMode: false
 
-                            function applyZoom(deltaY) {
+                            function applyZoom(deltaY, stepMultiplier) {
                                 const oldScale = timelinePanel.timelineScale
-                                const factor = deltaY > 0 ? 1.2 : (1 / 1.2)
+                                const multiplier = stepMultiplier !== undefined ? stepMultiplier : 1.0
+                                const step = 1.0 + ((1.2 - 1.0) * multiplier)
+                                const factor = deltaY > 0 ? step : (1 / step)
                                 const newScale = clamp(oldScale * factor, timelinePanel.minScale, timelinePanel.maxScale)
                                 if (Math.abs(newScale - oldScale) < 0.0001)
                                     return
@@ -748,7 +762,7 @@ Basic.ApplicationWindow {
                         WheelHandler {
                             id: timelineWheelHandler
                             target: null
-                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            acceptedDevices: PointerDevice.TouchPad
                             acceptedModifiers: Qt.AltModifier
                             onWheel: (event) => {
                                 const ay = (event.angleDelta && event.angleDelta.y !== undefined) ? event.angleDelta.y : 0
@@ -760,33 +774,33 @@ Basic.ApplicationWindow {
                                 if (delta === 0)
                                     return
                                 event.accepted = true
-                                timelineInputArea.applyZoom(delta)
+                                timelineInputArea.applyZoom(delta, 0.5)
                             }
                         }
                     }
                 }
 
-                Connections {
-                    target: appController
-                    function onCurrentTimeChanged() {
-                        if (timelinePanel.timelineScale <= 1.001)
-                            return
+    Connections {
+        target: appController
+        function onCurrentTimeChanged() {
+            if (timelinePanel.timelineScale <= 1.001)
+                return
                         const playheadX = (appController.currentTime / safeDuration) * timelineView.width
                         const left = timelineFlick.contentX
                         const right = timelineFlick.contentX + timelineFlick.width
                         if (playheadX < left || playheadX > right)
                             timelineFlick.contentX = clamp(playheadX - timelineFlick.width * 0.5, 0, Math.max(0, timelineFlick.contentWidth - timelineFlick.width))
-                    }
-                    function onTrimChanged() {
-                        if (!startInput.activeFocus)
-                            startInput.text = formatTime(appController.startTime)
-                        if (!endInput.activeFocus)
-                            endInput.text = formatTime(appController.endTime)
-                    }
-                    function onVideoPathChanged() {
-                        thumbsDebounce.restart()
-                    }
-                }
+        }
+        function onTrimChanged() {
+            if (!startInput.activeFocus)
+                startInput.text = formatTime(appController.startTime)
+            if (!endInput.activeFocus)
+                endInput.text = formatTime(appController.endTime)
+        }
+        function onVideoPathChanged() {
+            thumbsDebounce.restart()
+        }
+    }
 
                 Connections {
                     target: keyState
@@ -874,11 +888,15 @@ Basic.ApplicationWindow {
                             textRole: "label"
                             enabled: subtitleOptions.length > 1
                             onActivated: (index) => {
+                                if (syncingSubtitleSelection)
+                                    return
                                 const option = subtitleOptions[index]
                                 if (option)
                                     player.activeSubtitleTrack = option.index
                             }
                             onCurrentIndexChanged: {
+                                if (syncingSubtitleSelection)
+                                    return
                                 const option = subtitleOptions[currentIndex]
                                 if (option && player.activeSubtitleTrack !== option.index)
                                     player.activeSubtitleTrack = option.index
