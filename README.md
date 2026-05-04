@@ -1,6 +1,29 @@
-# ClipClipping
+# ![ClipClipping icon](assets/ClipClippingIcon.png) ClipClipping
 
-Qt 6 + QML app for creating short clips and GIFs (MVP).
+ClipClipping is a desktop app for quickly cutting short moments from videos and exporting them as lightweight GIFs for chats and social media.
+
+Built with Qt 6 + QML, it focuses on a simple flow: open video -> pick start/end -> export -> share.
+
+## About the project
+
+ClipClipping is designed for users who want to create short, shareable clips without learning complex video editors.
+It is especially useful for messenger workflows (including Telegram-style GIF usage), where small file size and fast export matter.
+
+## Features
+
+- Open video files from dialog or drag-and-drop.
+- Preview and play video directly in the app.
+- Select trim range with start/end controls.
+- Export to GIF with automatic quality fallback to fit under 10 MB.
+- See export progress and cancel long-running jobs.
+- Portable packaging support for Windows and Linux builds.
+
+## Screenshots
+
+Project screenshots:
+
+![Main menu](assets/screenshots/MainMenu.png)
+![Program window](assets/screenshots/Program.png)
 
 ## Quick Start (Linux)
 
@@ -13,10 +36,11 @@ cmake --build build -j
 ## Quick Start (Windows)
 
 ```powershell
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/package"
 cmake --build build --config Release
-cmake --install build --config Release --prefix package
-windeployqt --release --qmldir .\src .\package\bin\ClipClipping.exe
+cmake --install build --config Release
+$windeployqt = "C:\Qt\6.6.3\msvc2019_64\bin\windeployqt.exe"
+& $windeployqt --release --force --dir .\package --qmldir .\src\ui --qmldir .\src --qmldir . .\package\bin\ClipClipping.exe
 .\package\bin\ClipClipping.exe
 ```
 
@@ -47,18 +71,11 @@ cmake --build build -j
 ./build/bin/ClipClipping
 ```
 
-## Local build (Windows)
+If `windeployqt` is not found in `PATH`, use Qt Command Prompt or full path to `windeployqt.exe`
+(for example `C:\Qt\6.6.3\msvc2019_64\bin\windeployqt.exe`).
 
-```powershell
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-cmake --install build --config Release --prefix package
-windeployqt --release --qmldir .\src .\package\bin\ClipClipping.exe
-.\package\bin\ClipClipping.exe
-```
-
-If `windeployqt` is not found, use Qt Command Prompt or full path to `windeployqt.exe`
-(for example `C:\Qt\6.x.x\msvc2019_64\bin\windeployqt.exe`).
+For this project, use `--dir .\package` so QML modules are deployed to `package\qml`
+(required by `package\bin\qt.conf` with `Prefix=..`).
 
 If your generator is single-config, build output executable path may be:
 
@@ -71,8 +88,11 @@ but it should still be launched from deployed `package\bin\ClipClipping.exe`.
 ## Portable package (local)
 
 ```bash
-cmake --install build --config Release --prefix package
+cmake --install build --config Release
 ```
+
+Note: On Windows, Qt deploy scripts require an absolute install prefix.
+If needed, pass it explicitly with `--prefix "$PWD/package"`.
 
 Add FFmpeg tools manually into `package/tools`:
 
