@@ -105,6 +105,31 @@ chmod +x ClipClipping-vX.Y.Z-linux-x86_64.AppImage
 ./ClipClipping-vX.Y.Z-linux-x86_64.AppImage
 ```
 
+Local AppImage build helper:
+
+```bash
+./scripts/build-appimage.sh
+```
+
+Output file:
+
+- `dist/ClipClipping-local-x86_64.AppImage`
+
+Script tries `ffmpeg`/`ffprobe` from `PATH` first.
+If they are missing, it downloads a static Linux build automatically into `.cache/ffmpeg`.
+It also downloads AppImage tooling (`linuxdeploy`, `appimagetool`) into `.cache/appimage-tools`.
+
+Optionally you can override tool paths:
+
+```bash
+FFMPEG_BIN=/usr/bin/ffmpeg FFPROBE_BIN=/usr/bin/ffprobe ./scripts/build-appimage.sh
+```
+
+Note for AppImage runtime:
+
+- It defaults to `xcb` platform for better compatibility.
+- File picker in AppImage uses Qt dialog (not native DE dialog) to avoid KDE/KIO runtime issues.
+
 ## Current scope
 
 - Video selection (dialog + drag&drop)

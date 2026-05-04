@@ -2,6 +2,17 @@
 build/
 cmake-build-*/
 .qt/
+package/
+AppDir/
+dist/
+squashfs-root/
+.cache/
+
+# AppImage artifacts
+*.AppImage
+appimagetool-*.AppImage
+linuxdeploy-*.AppImage
+linuxdeploy-plugin-qt-*.AppImage
 
 # CMake / compile metadata
 CMakeFiles/
@@ -27,6 +38,8 @@ Makefile
 *.dll
 *.dylib
 *.exe
+core
+core.*
 
 # OS files
 .DS_Store

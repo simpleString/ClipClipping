@@ -125,13 +125,8 @@ jobs:
           Categories=AudioVideo;Video;
           EOF
 
-          mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
-          cat > AppDir/usr/share/icons/hicolor/scalable/apps/clipclipping.svg <<'EOF'
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-            <rect width="128" height="128" rx="20" fill="#1f2b46"/>
-            <path d="M40 34h20c18 0 30 11 30 30s-12 30-30 30H40V34zm20 50c11 0 18-7 18-20s-7-20-18-20h-8v40h8z" fill="#d8e6ff"/>
-          </svg>
-          EOF
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          cp "${{ github.workspace }}/assets/ClipClippingIcon.png" AppDir/usr/share/icons/hicolor/256x256/apps/clipclipping.png
 
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
@@ -144,7 +139,7 @@ jobs:
             --appdir AppDir \
             -e AppDir/usr/bin/ClipClipping \
             -d AppDir/usr/share/applications/clipclipping.desktop \
-            -i AppDir/usr/share/icons/hicolor/scalable/apps/clipclipping.svg \
+            -i AppDir/usr/share/icons/hicolor/256x256/apps/clipclipping.png \
             --plugin qt \
             --output appimage
 

@@ -20,6 +20,18 @@ qt_add_executable(ClipClipping
     src/AppController.cpp
 )
 
+if(WIN32)
+    target_sources(ClipClipping PRIVATE
+        assets/app.rc
+    )
+endif()
+
+qt_add_resources(ClipClipping "app_assets"
+    PREFIX "/"
+    FILES
+        assets/ClipClippingIcon.png
+)
+
 qt_add_qml_module(ClipClipping
     URI ClipClipping
     VERSION 1.0

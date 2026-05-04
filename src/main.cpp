@@ -8,6 +8,7 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QTimer>
+#include <QIcon>
 #include <QtGlobal>
 
 #ifdef Q_OS_WIN
@@ -189,6 +190,7 @@ int main(int argc, char *argv[]) {
 #endif
     QQuickStyle::setStyle("Basic");
     QApplication app(argc, argv);
+    app.setWindowIcon(QIcon(QStringLiteral(":/assets/ClipClippingIcon.png")));
     QQmlApplicationEngine engine;
 
     AppController controller;

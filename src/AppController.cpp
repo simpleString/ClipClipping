@@ -155,7 +155,15 @@ bool AppController::hasVideo() const {
 
 void AppController::openVideoDialog() {
     const QString filter = "Video files (*.mp4 *.avi *.mkv *.mov *.webm *.flv *.wmv *.ts *.m4v);;All files (*)";
-    const QString filePath = QFileDialog::getOpenFileName(nullptr, "Select Video", QString(), filter);
+    QFileDialog dialog(nullptr, "Select Video");
+    dialog.setFileMode(QFileDialog::ExistingFile);
+    dialog.setNameFilter(filter);
+    dialog.setOption(QFileDialog::DontUseNativeDialog, false);
+    if (!dialog.exec()) {
+        return;
+    }
+    const QStringList files = dialog.selectedFiles();
+    const QString filePath = files.isEmpty() ? QString() : files.first();
     if (filePath.isEmpty()) {
         return;
     }
@@ -164,7 +172,16 @@ void AppController::openVideoDialog() {
 
 void AppController::openSaveGifDialog() {
     const QString filter = "GIF files (*.gif)";
-    QString filePath = QFileDialog::getSaveFileName(nullptr, "Save GIF", "output.gif", filter);
+    QFileDialog dialog(nullptr, "Save GIF", "output.gif", filter);
+    dialog.setAcceptMode(QFileDialog::AcceptSave);
+    dialog.setFileMode(QFileDialog::AnyFile);
+    dialog.setDefaultSuffix("gif");
+    dialog.setOption(QFileDialog::DontUseNativeDialog, false);
+    if (!dialog.exec()) {
+        return;
+    }
+    const QStringList files = dialog.selectedFiles();
+    QString filePath = files.isEmpty() ? QString() : files.first();
     if (filePath.isEmpty()) {
         return;
     }
