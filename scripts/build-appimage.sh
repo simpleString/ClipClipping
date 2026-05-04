@@ -187,8 +187,8 @@ Categories=AudioVideo;Video;
 EOF
 
 mkdir -p "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
-cp "${ROOT_DIR}/assets/ClipClippingIcon.png" "${APPDIR}/usr/share/icons/hicolor/256x256/apps/clipclipping.png"
-cp "${ROOT_DIR}/assets/ClipClippingIcon.png" "${APPDIR}/clipclipping.png"
+cp "${ROOT_DIR}/assets/ClipClippingIcon-256.png" "${APPDIR}/usr/share/icons/hicolor/256x256/apps/clipclipping.png"
+cp "${ROOT_DIR}/assets/ClipClippingIcon-256.png" "${APPDIR}/clipclipping.png"
 
 # Required by appimagetool when linuxdeploy step fails early
 cp "${APPDIR}/usr/share/applications/clipclipping.desktop" "${APPDIR}/clipclipping.desktop"

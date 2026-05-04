@@ -126,7 +126,7 @@ jobs:
           EOF
 
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-          cp "${{ github.workspace }}/assets/ClipClippingIcon.png" AppDir/usr/share/icons/hicolor/256x256/apps/clipclipping.png
+          cp "${{ github.workspace }}/assets/ClipClippingIcon-256.png" AppDir/usr/share/icons/hicolor/256x256/apps/clipclipping.png
 
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
