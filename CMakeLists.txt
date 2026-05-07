@@ -88,21 +88,7 @@ target_link_libraries(ClipClipping
 )
 
 if(WIN32)
-    set(CPACK_GENERATOR "ZIP;NSIS")
-    set(CPACK_NSIS_DISPLAY_NAME "ClipClipping")
-    set(CPACK_NSIS_PACKAGE_NAME "ClipClipping")
-    set(CPACK_NSIS_INSTALL_ROOT "$LOCALAPPDATA")
-    set(CPACK_NSIS_MUI_ICON "${CMAKE_SOURCE_DIR}/assets/ClipClippingIcon.ico")
-    set(CPACK_NSIS_MUI_UNIICON "${CMAKE_SOURCE_DIR}/assets/ClipClippingIcon.ico")
-    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
-    set(CPACK_NSIS_CREATE_ICONS_EXTRA
-        "CreateShortCut '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\ClipClipping.lnk' '$INSTDIR\\\\bin\\\\ClipClipping.exe'"
-    )
-    set(CPACK_NSIS_DELETE_ICONS_EXTRA
-        "Delete '$SMPROGRAMS\\\\$START_MENU\\\\ClipClipping.lnk'"
-    )
-    set(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\ClipClipping.exe")
-    set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/simplestring/ClipClipping")
+    set(CPACK_GENERATOR "ZIP")
 else()
     set(CPACK_GENERATOR "ZIP")
 endif()

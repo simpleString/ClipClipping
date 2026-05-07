@@ -220,10 +220,48 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cd build
-          cpack -G NSIS -C Release -B nsis_output
-          $installer = Get-ChildItem -Path nsis_output -Filter "*.exe" -Recurse | Select-Object -First 1
-          Copy-Item $installer.FullName "${{ github.workspace }}/${{ matrix.installer_name }}"
+          $iconPath = "${{ github.workspace }}\assets\ClipClippingIcon.ico"
+          $packageDir = "${{ github.workspace }}\package"
+          $version = "${{ env.APP_VERSION }}"
+          $outFile = "${{ github.workspace }}\${{ matrix.installer_name }}"
+
+          $nsi = @"
+          !include "MUI2.nsh"
+          !define APPNAME "ClipClipping"
+          !define APPVERSION "$version"
+          Name "`${APPNAME} `${APPVERSION}"
+          OutFile "$outFile"
+          InstallDir "`$LOCALAPPDATA\`${APPNAME}"
+          RequestExecutionLevel user
+          !define MUI_ICON "$iconPath"
+          !define MUI_UNICON "$iconPath"
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_LANGUAGE "English"
+          Section "Install"
+            SetOutPath `$INSTDIR
+            File /r "$packageDir\*.*"
+            CreateDirectory "`$SMPROGRAMS\`${APPNAME}"
+            CreateShortCut "`$SMPROGRAMS\`${APPNAME}\`${APPNAME}.lnk" "`$INSTDIR\bin\ClipClipping.exe"
+            CreateShortCut "`$SMPROGRAMS\`${APPNAME}\Uninstall.lnk" "`$INSTDIR\uninstall.exe"
+            WriteUninstaller "`$INSTDIR\uninstall.exe"
+            WriteRegStr HKCU "Software\`${APPNAME}" "InstallDir" "`$INSTDIR"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\`${APPNAME}" "DisplayName" "`${APPNAME}"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\`${APPNAME}" "UninstallString" "`$INSTDIR\uninstall.exe"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\`${APPNAME}" "DisplayVersion" "`${APPVERSION}"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\`${APPNAME}" "Publisher" "`${APPNAME}"
+          SectionEnd
+          Section "Uninstall"
+            RMDir /r "`$INSTDIR"
+            Delete "`$SMPROGRAMS\`${APPNAME}\*.*"
+            RMDir "`$SMPROGRAMS\`${APPNAME}"
+            DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\`${APPNAME}"
+            DeleteRegKey HKCU "Software\`${APPNAME}"
+          SectionEnd
+          "@
+
+          $nsi | Set-Content -Path "${{ github.workspace }}\installer.nsi" -Encoding ASCII
+          makensis "${{ github.workspace }}\installer.nsi"
 
       - name: Publish GitHub Release asset
         uses: softprops/action-gh-release@v2
