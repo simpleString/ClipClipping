@@ -1345,13 +1345,18 @@ Basic.ApplicationWindow {
 
                         Column {
                             spacing: 4
-                            Basic.Label { text: "Width: " + appController.targetWidth + "px"; color: "#999"; font.pixelSize: 12 }
+                            Basic.Label {
+                                text: appController.stickerWebmMode ? "Width: 512px (fixed)" : ("Width: " + appController.targetWidth + "px")
+                                color: "#999"
+                                font.pixelSize: 12
+                            }
                             Basic.Slider {
                                 width: 220
                                 implicitHeight: 18
                                 padding: 0
+                                enabled: !appController.stickerWebmMode
                                 from: 100
-                                to: appController.stickerWebmMode ? 512 : 1024
+                                to: 1024
                                 value: appController.targetWidth
                                 background: Rectangle {
                                     x: 0
@@ -1359,11 +1364,12 @@ Basic.ApplicationWindow {
                                     width: parent.width
                                     height: 6
                                     radius: 3
-                                    color: "#1b2740"
+                                    color: parent.enabled ? "#1b2740" : "#151d2e"
                                     border.width: 1
-                                    border.color: "#34507a"
+                                    border.color: parent.enabled ? "#34507a" : "#252f42"
 
                                     Rectangle {
+                                        visible: parent.parent.enabled
                                         width: parent.width * ((parent.parent.value - parent.parent.from) / (parent.parent.to - parent.parent.from))
                                         height: parent.height
                                         radius: 3

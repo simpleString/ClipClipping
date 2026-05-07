@@ -130,7 +130,6 @@ private:
                                const QString &outputPath,
                                double startTime,
                                double clipDuration,
-                               int width,
                                int fps,
                                int crf);
     void startThumbnailGeneration(int count);

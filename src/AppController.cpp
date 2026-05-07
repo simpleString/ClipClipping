@@ -439,11 +439,10 @@ void AppController::startConversion(const QString &outputPath) {
             }
 
             const int fps = std::max(6, std::min(m_targetFps - (i / 2) * 2, 30));
-            const int width = std::max(100, std::min(m_targetWidth, 512));
             const int crf = crfConfigs.at(i);
             setProgress(int((double(i) / double(crfConfigs.size())) * 80.0));
 
-            if (!runWebmStickerAttempt(m_videoPath, normalizedOutputPath, m_startTime, clipDuration, width, fps, crf)) {
+            if (!runWebmStickerAttempt(m_videoPath, normalizedOutputPath, m_startTime, clipDuration, fps, crf)) {
                 continue;
             }
 
@@ -1028,7 +1027,6 @@ bool AppController::runWebmStickerAttempt(const QString &inputPath,
                                           const QString &outputPath,
                                           double startTime,
                                           double clipDuration,
-                                          int width,
                                           int fps,
                                           int crf) {
     QString subtitleError;
@@ -1044,15 +1042,16 @@ bool AppController::runWebmStickerAttempt(const QString &inputPath,
         m_activeFfmpeg = &proc;
 
         const QString filter = QString(
-            "%1fps=%2,scale=%3:%3:force_original_aspect_ratio=decrease:flags=lanczos"
-        ).arg(subtitlePrefixes.at(attemptIdx)).arg(fps).arg(width);
+            "%1fps=%2,scale='if(gte(iw,ih),512,-2)':'if(gte(iw,ih),-2,512)':flags=lanczos"
+        ).arg(subtitlePrefixes.at(attemptIdx)).arg(fps);
 
         QStringList args{
             "-y",
             "-ss", QString::number(startTime, 'f', 3),
-            "-t", QString::number(std::min(clipDuration, 3.0), 'f', 3),
             "-i", inputPath,
+            "-t", QString::number(std::min(clipDuration, 3.0), 'f', 3),
             "-an",
+            "-sn",
             "-vf", filter,
             "-c:v", "libvpx-vp9",
             "-pix_fmt", "yuv420p",
