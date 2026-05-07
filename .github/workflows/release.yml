@@ -21,12 +21,20 @@ jobs:
           - os: windows-latest
             qt_host: windows
             package_name: ClipClipping-${{ github.ref_name }}-windows-portable.zip
+            installer_name: ClipClipping-${{ github.ref_name }}-windows-setup.exe
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set version from tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "APP_VERSION=${TAG#v}" >> $GITHUB_ENV
+          echo "Version: ${TAG#v}"
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
@@ -43,8 +51,12 @@ jobs:
           modules: qtmultimedia qt5compat
           cache: true
 
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        run: choco install nsis -y
+
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/package"
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/package" -DCLIP_VERSION="${{ env.APP_VERSION }}"
 
       - name: Build
         run: cmake --build build --config Release
@@ -204,8 +216,19 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path package\* -DestinationPath "${{ matrix.package_name }}"
 
+      - name: Build NSIS installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd build
+          cpack -G NSIS -C Release -B nsis_output
+          $installer = Get-ChildItem -Path nsis_output -Filter "*.exe" -Recurse | Select-Object -First 1
+          Copy-Item $installer.FullName "${{ github.workspace }}/${{ matrix.installer_name }}"
+
       - name: Publish GitHub Release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.package_name }}
+          files: |
+            ${{ matrix.package_name }}
+            ${{ matrix.installer_name }}
           generate_release_notes: true
