@@ -190,6 +190,8 @@ int main(int argc, char *argv[]) {
 #endif
     QQuickStyle::setStyle("Basic");
     QApplication app(argc, argv);
+    QCoreApplication::setOrganizationName(QStringLiteral("ClipClipping"));
+    QCoreApplication::setApplicationName(QStringLiteral("ClipClipping"));
     app.setWindowIcon(QIcon(QStringLiteral(":/assets/ClipClippingIcon.png")));
     QQmlApplicationEngine engine;
 

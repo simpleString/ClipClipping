@@ -1326,34 +1326,47 @@ Basic.ApplicationWindow {
                             }
                         }
 
-                        Basic.CheckBox {
-                            id: burnSubtitlesCheck
-                            text: "Burn subtitles into export"
-                            checked: appController.includeSubtitles
+                        Item {
+                            id: burnSubtitlesToggle
+                            width: subtitleSelect.width
+                            height: 22
                             enabled: subtitleOptions.length > 1 && subtitleSelect.currentIndex > 0
-                            onToggled: appController.includeSubtitles = checked
-                            indicator: Rectangle {
-                                implicitWidth: 18
-                                implicitHeight: 18
-                                radius: 4
-                                color: burnSubtitlesCheck.checked ? "#4f86de" : "#131d33"
-                                border.width: 1
-                                border.color: burnSubtitlesCheck.checked ? "#7fb2ff" : "#34507a"
+
+                            Row {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 8
+
                                 Rectangle {
-                                    anchors.centerIn: parent
-                                    width: 8
-                                    height: 8
-                                    radius: 2
-                                    visible: burnSubtitlesCheck.checked
-                                    color: "#eaf3ff"
+                                    width: 18
+                                    height: 18
+                                    radius: 4
+                                    color: appController.includeSubtitles ? "#4f86de" : "#131d33"
+                                    border.width: 1
+                                    border.color: appController.includeSubtitles ? "#7fb2ff" : "#34507a"
+
+                                    Rectangle {
+                                        anchors.centerIn: parent
+                                        width: 8
+                                        height: 8
+                                        radius: 2
+                                        visible: appController.includeSubtitles
+                                        color: "#eaf3ff"
+                                    }
+                                }
+
+                                Text {
+                                    text: "Burn subtitles into export"
+                                    color: burnSubtitlesToggle.enabled ? "#b7c7e6" : "#6f83ab"
+                                    font.pixelSize: 12
+                                    verticalAlignment: Text.AlignVCenter
                                 }
                             }
-                            contentItem: Text {
-                                text: burnSubtitlesCheck.text
-                                color: burnSubtitlesCheck.enabled ? "#b7c7e6" : "#6f83ab"
-                                font.pixelSize: 12
-                                verticalAlignment: Text.AlignVCenter
-                                leftPadding: burnSubtitlesCheck.indicator.width + 8
+
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: burnSubtitlesToggle.enabled
+                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: appController.includeSubtitles = !appController.includeSubtitles
                             }
                         }
                     }

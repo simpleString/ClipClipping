@@ -10,6 +10,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QUrl>
 #include <QMediaPlayer>
@@ -25,6 +26,8 @@ namespace {
 constexpr qint64 kMaxGifSize = 10 * 1024 * 1024;
 constexpr qint64 kMaxStickerWebmSize = 256 * 1024;
 constexpr int kFixedThumbCount = 12;
+const QString kLastImportPathKey = QStringLiteral("ui/lastImportPath");
+const QString kLastExportPathKey = QStringLiteral("ui/lastExportPath");
 
 QString bundledToolPath(const QString &toolName) {
 #ifdef Q_OS_WIN
@@ -163,7 +166,15 @@ bool AppController::hasVideo() const {
 
 void AppController::openVideoDialog() {
     const QString filter = "Video files (*.mp4 *.avi *.mkv *.mov *.webm *.flv *.wmv *.ts *.m4v);;All files (*)";
-    QFileDialog dialog(nullptr, "Select Video");
+    QSettings settings;
+    QString startPath = settings.value(kLastImportPathKey).toString();
+    if (startPath.isEmpty()) {
+        startPath = QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
+    }
+    if (startPath.isEmpty()) {
+        startPath = QDir::homePath();
+    }
+    QFileDialog dialog(nullptr, "Select Video", startPath);
     dialog.setFileMode(QFileDialog::ExistingFile);
     dialog.setNameFilter(filter);
     dialog.setOption(QFileDialog::DontUseNativeDialog, false);
@@ -175,6 +186,7 @@ void AppController::openVideoDialog() {
     if (filePath.isEmpty()) {
         return;
     }
+    settings.setValue(kLastImportPathKey, QFileInfo(filePath).absoluteFilePath());
     openVideo(filePath);
 }
 
@@ -186,8 +198,21 @@ void AppController::openSaveGifDialog() {
         setError("Sticker WEBM duration must be 3 seconds or less.");
         return;
     }
+    QSettings settings;
     const QString filter = webm ? "WEBM files (*.webm)" : "GIF files (*.gif)";
-    QFileDialog dialog(nullptr, webm ? "Save WEBM Sticker" : "Save GIF", webm ? "output.webm" : "output.gif", filter);
+    const QString lastExportPath = settings.value(kLastExportPathKey).toString();
+    QString suggestedPath;
+    if (!lastExportPath.isEmpty()) {
+        QFileInfo lastInfo(lastExportPath);
+        suggestedPath = lastInfo.absolutePath();
+    }
+    if (suggestedPath.isEmpty()) {
+        suggestedPath = QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
+    }
+    if (suggestedPath.isEmpty()) {
+        suggestedPath = QDir::homePath();
+    }
+    QFileDialog dialog(nullptr, webm ? "Save WEBM Sticker" : "Save GIF", suggestedPath, filter);
     dialog.setAcceptMode(QFileDialog::AcceptSave);
     dialog.setFileMode(QFileDialog::AnyFile);
     dialog.setDefaultSuffix(webm ? "webm" : "gif");
@@ -207,6 +232,7 @@ void AppController::openSaveGifDialog() {
     } else if (!filePath.endsWith(".gif", Qt::CaseInsensitive)) {
         filePath += ".gif";
     }
+    settings.setValue(kLastExportPathKey, QFileInfo(filePath).absoluteFilePath());
     startConversion(filePath);
 }
 
