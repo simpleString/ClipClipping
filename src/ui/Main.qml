@@ -297,7 +297,62 @@ Basic.ApplicationWindow {
                     font.bold: true
                 }
 
-                Item { Layout.fillWidth: true }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Item {
+                        visible: !appController.converting
+                        Layout.fillWidth: true
+                    }
+                    Basic.ProgressBar {
+                        visible: appController.converting
+                        Layout.fillWidth: true
+                        from: 0
+                        to: 100
+                        value: appController.progress
+                        background: Rectangle {
+                            implicitHeight: 10
+                            radius: 5
+                            color: "#1b2740"
+                            border.width: 1
+                            border.color: "#34507a"
+                        }
+                        contentItem: Rectangle {
+                            radius: 5
+                            color: "#5c9dff"
+                            width: parent.width * (parent.visualPosition || 0)
+                        }
+                    }
+                    Basic.Label {
+                        visible: appController.converting
+                        text: appController.progress + "%"
+                        color: "#64b5f6"
+                        font.pixelSize: 12
+                    }
+                    Basic.Button {
+                        visible: appController.converting
+                        text: "Cancel"
+                        onClicked: appController.cancelConversion()
+                        background: Rectangle {
+                            radius: 6
+                            border.width: 1
+                            border.color: parent.hovered ? buttonBorderHover : buttonBorder
+                            color: parent.hovered ? buttonBgHover : buttonBg
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: buttonText
+                            font.bold: true
+                            font.pixelSize: 12
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        implicitHeight: 28
+                        leftPadding: 14
+                        rightPadding: 14
+                    }
+                }
 
                 Basic.Button {
                     id: helpButton
@@ -1557,69 +1612,28 @@ Basic.ApplicationWindow {
                             rightPadding: 14
                         }
 
-                        Basic.Button {
-                            text: "Cancel"
-                            visible: appController.converting
-                            topPadding: 8
-                            onClicked: appController.cancelConversion()
-                            background: Rectangle {
-                                radius: 8
-                                border.width: 1
-                                border.color: parent.hovered ? buttonBorderHover : buttonBorder
-                                color: parent.hovered ? buttonBgHover : buttonBg
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                color: buttonText
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            padding: 10
+                        Basic.Label {
+                            visible: appController.errorMessage.length > 0
+                            text: appController.errorMessage
+                            color: "#ef5350"
+                            font.pixelSize: 12
+                            font.bold: true
+                            wrapMode: Text.WordWrap
+                            width: 220
+                        }
+                        Basic.Label {
+                            visible: appController.successMessage.length > 0
+                            text: appController.successMessage
+                            color: "#66bb6a"
+                            font.pixelSize: 12
+                            font.bold: true
+                            wrapMode: Text.WordWrap
+                            width: 220
                         }
                     }
                 }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    visible: appController.converting
-                    Basic.ProgressBar {
-                        Layout.fillWidth: true
-                        from: 0
-                        to: 100
-                        value: appController.progress
-                        background: Rectangle {
-                            implicitHeight: 12
-                            radius: 6
-                            color: "#1b2740"
-                            border.width: 1
-                            border.color: "#34507a"
-                        }
-                        contentItem: Rectangle {
-                            radius: 6
-                            color: "#5c9dff"
-                            width: parent.width * (parent.visualPosition || 0)
-                        }
-                    }
-                    Basic.Label {
-                        text: appController.progress + "%"
-                        color: "#64b5f6"
-                        font.pixelSize: 12
-                    }
-                }
 
-                Basic.Label {
-                    visible: appController.errorMessage.length > 0
-                    text: appController.errorMessage
-                    color: "#ef5350"
-                    font.pixelSize: 13
-                }
-                Basic.Label {
-                    visible: appController.successMessage.length > 0
-                    text: appController.successMessage
-                    color: "#66bb6a"
-                    font.pixelSize: 13
-                }
             }
         }
     }
