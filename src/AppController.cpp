@@ -23,6 +23,7 @@
 
 namespace {
 constexpr qint64 kMaxGifSize = 10 * 1024 * 1024;
+constexpr qint64 kMaxStickerWebmSize = 256 * 1024;
 constexpr int kFixedThumbCount = 12;
 
 QString bundledToolPath(const QString &toolName) {
@@ -134,6 +135,9 @@ int AppController::videoWidth() const { return m_videoInfo.width; }
 int AppController::videoFps() const { return m_videoInfo.fps; }
 int AppController::targetWidth() const { return m_targetWidth; }
 int AppController::targetFps() const { return m_targetFps; }
+bool AppController::stickerWebmMode() const { return m_stickerWebmMode; }
+bool AppController::includeSubtitles() const { return m_includeSubtitles; }
+int AppController::subtitleStreamIndex() const { return m_subtitleStreamIndex; }
 bool AppController::converting() const { return m_converting; }
 int AppController::progress() const { return m_progress; }
 QStringList AppController::thumbnailUrls() const { return m_thumbnailUrls; }
@@ -145,6 +149,10 @@ QString AppController::errorMessage() const { return m_errorMessage; }
 QString AppController::successMessage() const { return m_successMessage; }
 double AppController::estimatedSizeMb() const {
     const double clipDuration = std::max(0.0, m_endTime - m_startTime);
+    if (m_stickerWebmMode) {
+        const double estKb = (double(m_targetFps) / 30.0) * clipDuration * 120.0;
+        return estKb / 1024.0;
+    }
     const double est = (double(m_targetWidth) / 480.0) * (double(m_targetFps) / 15.0) * clipDuration * 0.8;
     return est;
 }
@@ -171,11 +179,18 @@ void AppController::openVideoDialog() {
 }
 
 void AppController::openSaveGifDialog() {
-    const QString filter = "GIF files (*.gif)";
-    QFileDialog dialog(nullptr, "Save GIF", "output.gif", filter);
+    clearMessages();
+    const bool webm = m_stickerWebmMode;
+    const double clipDuration = m_endTime - m_startTime;
+    if (webm && clipDuration > 3.0) {
+        setError("Sticker WEBM duration must be 3 seconds or less.");
+        return;
+    }
+    const QString filter = webm ? "WEBM files (*.webm)" : "GIF files (*.gif)";
+    QFileDialog dialog(nullptr, webm ? "Save WEBM Sticker" : "Save GIF", webm ? "output.webm" : "output.gif", filter);
     dialog.setAcceptMode(QFileDialog::AcceptSave);
     dialog.setFileMode(QFileDialog::AnyFile);
-    dialog.setDefaultSuffix("gif");
+    dialog.setDefaultSuffix(webm ? "webm" : "gif");
     dialog.setOption(QFileDialog::DontUseNativeDialog, false);
     if (!dialog.exec()) {
         return;
@@ -185,7 +200,11 @@ void AppController::openSaveGifDialog() {
     if (filePath.isEmpty()) {
         return;
     }
-    if (!filePath.endsWith(".gif", Qt::CaseInsensitive)) {
+    if (webm) {
+        if (!filePath.endsWith(".webm", Qt::CaseInsensitive)) {
+            filePath += ".webm";
+        }
+    } else if (!filePath.endsWith(".gif", Qt::CaseInsensitive)) {
         filePath += ".gif";
     }
     startConversion(filePath);
@@ -314,36 +333,70 @@ void AppController::startConversion(const QString &outputPath) {
     setProgress(0);
 
     bool success = false;
-    for (int i = 0; i < configs.size(); ++i) {
-        if (m_cancelRequested) {
-            setError("Conversion cancelled.");
-            break;
+    if (m_stickerWebmMode) {
+        const QList<int> crfConfigs = buildWebmCrfConfigs(clipDuration);
+        for (int i = 0; i < crfConfigs.size(); ++i) {
+            if (m_cancelRequested) {
+                setError("Conversion cancelled.");
+                break;
+            }
+
+            const int fps = std::max(6, std::min(m_targetFps - (i / 2) * 2, 30));
+            const int width = std::max(100, std::min(m_targetWidth, 512));
+            const int crf = crfConfigs.at(i);
+            setProgress(int((double(i) / double(crfConfigs.size())) * 80.0));
+
+            if (!runWebmStickerAttempt(m_videoPath, normalizedOutputPath, m_startTime, clipDuration, width, fps, crf)) {
+                continue;
+            }
+
+            QFileInfo outInfo(normalizedOutputPath);
+            if (outInfo.exists() && outInfo.size() <= kMaxStickerWebmSize) {
+                success = true;
+                setProgress(100);
+                m_successMessage = "WEBM sticker saved successfully.";
+                emit successMessageChanged();
+                break;
+            }
+
+            QFile::remove(normalizedOutputPath);
         }
 
-        const auto cfg = configs.at(i);
-        const int width = std::max(100, int(double(m_targetWidth) * cfg.scale));
-        const int fps = std::max(6, m_targetFps + cfg.fpsMod);
+        if (!success && !m_cancelRequested && m_errorMessage.isEmpty()) {
+            setError("Could not fit WEBM under 256KB. Try shorter clip.");
+        }
+    } else {
+        for (int i = 0; i < configs.size(); ++i) {
+            if (m_cancelRequested) {
+                setError("Conversion cancelled.");
+                break;
+            }
 
-        setProgress(int((double(i) / double(configs.size())) * 80.0));
+            const auto cfg = configs.at(i);
+            const int width = std::max(100, int(double(m_targetWidth) * cfg.scale));
+            const int fps = std::max(6, m_targetFps + cfg.fpsMod);
 
-        if (!runAttempt(m_videoPath, normalizedOutputPath, m_startTime, clipDuration, fps, width)) {
-            continue;
+            setProgress(int((double(i) / double(configs.size())) * 80.0));
+
+            if (!runAttempt(m_videoPath, normalizedOutputPath, m_startTime, clipDuration, fps, width)) {
+                continue;
+            }
+
+            QFileInfo outInfo(normalizedOutputPath);
+            if (outInfo.exists() && outInfo.size() <= kMaxGifSize) {
+                success = true;
+                setProgress(100);
+                m_successMessage = "GIF saved successfully.";
+                emit successMessageChanged();
+                break;
+            }
+
+            QFile::remove(normalizedOutputPath);
         }
 
-        QFileInfo outInfo(normalizedOutputPath);
-        if (outInfo.exists() && outInfo.size() <= kMaxGifSize) {
-            success = true;
-            setProgress(100);
-            m_successMessage = "GIF saved successfully.";
-            emit successMessageChanged();
-            break;
+        if (!success && !m_cancelRequested && m_errorMessage.isEmpty()) {
+            setError("Could not fit GIF under 10MB. Try shorter clip.");
         }
-
-        QFile::remove(normalizedOutputPath);
-    }
-
-    if (!success && !m_cancelRequested && m_errorMessage.isEmpty()) {
-        setError("Could not fit GIF under 10MB. Try shorter clip.");
     }
 
     setConverting(false);
@@ -494,7 +547,7 @@ void AppController::setEndTime(double value) {
 }
 
 void AppController::setTargetWidth(int value) {
-    const int maxW = std::max(100, std::max(m_videoInfo.width, 100));
+    const int maxW = m_stickerWebmMode ? 512 : 1024;
     const int clamped = std::max(100, std::min(value, maxW));
     if (clamped == m_targetWidth) {
         return;
@@ -509,6 +562,33 @@ void AppController::setTargetFps(int value) {
         return;
     }
     m_targetFps = clamped;
+    emit settingsChanged();
+}
+
+void AppController::setStickerWebmMode(bool value) {
+    if (m_stickerWebmMode == value) {
+        return;
+    }
+    m_stickerWebmMode = value;
+    if (m_stickerWebmMode && m_targetWidth > 512) {
+        m_targetWidth = 512;
+    }
+    emit settingsChanged();
+}
+
+void AppController::setIncludeSubtitles(bool value) {
+    if (m_includeSubtitles == value) {
+        return;
+    }
+    m_includeSubtitles = value;
+    emit settingsChanged();
+}
+
+void AppController::setSubtitleStreamIndex(int value) {
+    if (m_subtitleStreamIndex == value) {
+        return;
+    }
+    m_subtitleStreamIndex = value;
     emit settingsChanged();
 }
 
@@ -573,6 +653,39 @@ QList<AppController::AttemptConfig> AppController::buildConfigs(
     return sliced;
 }
 
+QList<int> AppController::buildWebmCrfConfigs(double clipDuration) {
+    Q_UNUSED(clipDuration)
+    return QList<int>{30, 34, 38, 42, 46, 50, 54, 58, 60};
+}
+
+QStringList AppController::subtitleFilterPrefixes(double startTime, QString *error) const {
+    if (error) {
+        error->clear();
+    }
+    if (!m_includeSubtitles || m_videoPath.isEmpty()) {
+        return QStringList{QString()};
+    }
+
+    if (m_subtitleStreamIndex < 0) {
+        if (error) {
+            *error = "Enable subtitle track first (not Off).";
+        }
+        return {};
+    }
+
+    QString normalizedPath = QDir::fromNativeSeparators(m_videoPath);
+    normalizedPath.replace("'", "\\'");
+    normalizedPath.replace(":", "\\:");
+
+    const QString shift = QString::number(std::max(0.0, startTime), 'f', 3);
+    return QStringList{
+        QString("setpts=PTS+%1/TB,subtitles='%2':si=%3,setpts=PTS-%1/TB,")
+            .arg(shift)
+            .arg(normalizedPath)
+            .arg(m_subtitleStreamIndex)
+    };
+}
+
 QString AppController::localFileUrl(const QString &path) {
     return QUrl::fromLocalFile(path).toString();
 }
@@ -604,13 +717,19 @@ AppController::VideoInfo AppController::probeVideo(const QString &path, QString 
     }
     const QJsonObject root = doc.object();
     const QJsonArray streams = root.value("streams").toArray();
+    VideoInfo info;
 
     QJsonObject videoStream;
     for (const auto &v : streams) {
         const QJsonObject s = v.toObject();
         if (s.value("codec_type").toString() == "video") {
             videoStream = s;
-            break;
+        }
+        if (s.value("codec_type").toString() == "subtitle") {
+            const int streamIdx = s.value("index").toInt(-1);
+            if (streamIdx >= 0) {
+                info.subtitleStreamIndexes.push_back(streamIdx);
+            }
         }
     }
     if (videoStream.isEmpty()) {
@@ -620,7 +739,6 @@ AppController::VideoInfo AppController::probeVideo(const QString &path, QString 
 
     const QJsonObject format = root.value("format").toObject();
 
-    VideoInfo info;
     info.duration = format.value("duration").toString().toDouble();
     info.width = videoStream.value("width").toInt();
     info.height = videoStream.value("height").toInt();
@@ -641,55 +759,172 @@ bool AppController::runAttempt(const QString &inputPath,
                                double clipDuration,
                                int fps,
                                int width) {
-    QProcess proc;
-    m_activeFfmpeg = &proc;
-
-    const QString filter = QString(
-        "fps=%1,scale=%2:-1:flags=lanczos,split[s0][s1];"
-        "[s0]palettegen=max_colors=256:stats_mode=diff[p];"
-        "[s1][p]paletteuse=dither=bayer:bayer_scale=5"
-    ).arg(fps).arg(width);
-
-    QStringList args{
-        "-y",
-        "-ss", QString::number(startTime, 'f', 3),
-        "-t", QString::number(clipDuration, 'f', 3),
-        "-i", inputPath,
-        "-filter_complex", filter,
-        outputPath
-    };
-
-    proc.start(bundledToolPath(QStringLiteral("ffmpeg")), args);
-    if (!proc.waitForStarted(3000)) {
-        m_activeFfmpeg = nullptr;
-        setError("Cannot start ffmpeg. Install ffmpeg.");
+    QString subtitleError;
+    const QStringList subtitlePrefixes = subtitleFilterPrefixes(startTime, &subtitleError);
+    if (subtitlePrefixes.isEmpty()) {
+        if (!subtitleError.isEmpty()) {
+            setError(subtitleError);
+        }
         return false;
     }
+    for (int attemptIdx = 0; attemptIdx < subtitlePrefixes.size(); ++attemptIdx) {
+        QProcess proc;
+        m_activeFfmpeg = &proc;
 
-    while (proc.state() == QProcess::Running) {
-        if (m_cancelRequested) {
-            proc.kill();
-            proc.waitForFinished(2000);
+        const QString filter = QString(
+            "%1fps=%2,scale=%3:-1:flags=lanczos,split[s0][s1];"
+            "[s0]palettegen=max_colors=256:stats_mode=diff[p];"
+            "[s1][p]paletteuse=dither=bayer:bayer_scale=5"
+        ).arg(subtitlePrefixes.at(attemptIdx)).arg(fps).arg(width);
+
+        QStringList args{
+            "-y",
+            "-ss", QString::number(startTime, 'f', 3),
+            "-t", QString::number(clipDuration, 'f', 3),
+            "-i", inputPath,
+            "-filter_complex", filter,
+            outputPath
+        };
+
+        proc.start(bundledToolPath(QStringLiteral("ffmpeg")), args);
+        if (!proc.waitForStarted(3000)) {
             m_activeFfmpeg = nullptr;
+            setError("Cannot start ffmpeg. Install ffmpeg.");
             return false;
         }
-        proc.waitForReadyRead(200);
-        const QString errOut = QString::fromLocal8Bit(proc.readAllStandardError());
-        const QStringList lines = errOut.split('\n', Qt::SkipEmptyParts);
-        for (const QString &line : lines) {
-            const double sec = parseFfmpegTimeToSeconds(line);
-            if (sec >= 0.0 && clipDuration > 0.0) {
-                const int pct = std::min(99, int((sec / clipDuration) * 100.0));
-                setProgress(std::max(m_progress, pct));
-            }
-        }
-        QCoreApplication::processEvents();
-    }
 
-    proc.waitForFinished();
-    const bool ok = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
-    m_activeFfmpeg = nullptr;
-    return ok;
+        QString fullErr;
+        while (proc.state() == QProcess::Running) {
+            if (m_cancelRequested) {
+                proc.kill();
+                proc.waitForFinished(2000);
+                m_activeFfmpeg = nullptr;
+                return false;
+            }
+            proc.waitForReadyRead(200);
+            const QString errOut = QString::fromLocal8Bit(proc.readAllStandardError());
+            if (!errOut.isEmpty()) {
+                fullErr += errOut;
+            }
+            const QStringList lines = errOut.split('\n', Qt::SkipEmptyParts);
+            for (const QString &line : lines) {
+                const double sec = parseFfmpegTimeToSeconds(line);
+                if (sec >= 0.0 && clipDuration > 0.0) {
+                    const int pct = std::min(99, int((sec / clipDuration) * 100.0));
+                    setProgress(std::max(m_progress, pct));
+                }
+            }
+            QCoreApplication::processEvents();
+        }
+
+        proc.waitForFinished();
+        const QString tailErr = QString::fromLocal8Bit(proc.readAllStandardError());
+        if (!tailErr.isEmpty()) {
+            fullErr += tailErr;
+        }
+        const bool ok = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
+        m_activeFfmpeg = nullptr;
+        if (ok) {
+            return true;
+        }
+
+        if (!fullErr.isEmpty()) {
+            setError(QString("ffmpeg failed: %1").arg(fullErr.split('\n', Qt::SkipEmptyParts).last()));
+        } else if (m_includeSubtitles) {
+            setError("Subtitle burn failed for selected track.");
+        }
+    }
+    return false;
+}
+
+bool AppController::runWebmStickerAttempt(const QString &inputPath,
+                                          const QString &outputPath,
+                                          double startTime,
+                                          double clipDuration,
+                                          int width,
+                                          int fps,
+                                          int crf) {
+    QString subtitleError;
+    const QStringList subtitlePrefixes = subtitleFilterPrefixes(startTime, &subtitleError);
+    if (subtitlePrefixes.isEmpty()) {
+        if (!subtitleError.isEmpty()) {
+            setError(subtitleError);
+        }
+        return false;
+    }
+    for (int attemptIdx = 0; attemptIdx < subtitlePrefixes.size(); ++attemptIdx) {
+        QProcess proc;
+        m_activeFfmpeg = &proc;
+
+        const QString filter = QString(
+            "%1fps=%2,scale=%3:%3:force_original_aspect_ratio=decrease:flags=lanczos"
+        ).arg(subtitlePrefixes.at(attemptIdx)).arg(fps).arg(width);
+
+        QStringList args{
+            "-y",
+            "-ss", QString::number(startTime, 'f', 3),
+            "-t", QString::number(std::min(clipDuration, 3.0), 'f', 3),
+            "-i", inputPath,
+            "-an",
+            "-vf", filter,
+            "-c:v", "libvpx-vp9",
+            "-pix_fmt", "yuv420p",
+            "-b:v", "0",
+            "-crf", QString::number(crf),
+            "-row-mt", "1",
+            "-threads", "4",
+            outputPath
+        };
+
+        proc.start(bundledToolPath(QStringLiteral("ffmpeg")), args);
+        if (!proc.waitForStarted(3000)) {
+            m_activeFfmpeg = nullptr;
+            setError("Cannot start ffmpeg. Install ffmpeg.");
+            return false;
+        }
+
+        QString fullErr;
+        while (proc.state() == QProcess::Running) {
+            if (m_cancelRequested) {
+                proc.kill();
+                proc.waitForFinished(2000);
+                m_activeFfmpeg = nullptr;
+                return false;
+            }
+            proc.waitForReadyRead(200);
+            const QString errOut = QString::fromLocal8Bit(proc.readAllStandardError());
+            if (!errOut.isEmpty()) {
+                fullErr += errOut;
+            }
+            const QStringList lines = errOut.split('\n', Qt::SkipEmptyParts);
+            for (const QString &line : lines) {
+                const double sec = parseFfmpegTimeToSeconds(line);
+                if (sec >= 0.0 && clipDuration > 0.0) {
+                    const int pct = std::min(99, int((sec / clipDuration) * 100.0));
+                    setProgress(std::max(m_progress, pct));
+                }
+            }
+            QCoreApplication::processEvents();
+        }
+
+        proc.waitForFinished();
+        const QString tailErr = QString::fromLocal8Bit(proc.readAllStandardError());
+        if (!tailErr.isEmpty()) {
+            fullErr += tailErr;
+        }
+        const bool ok = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
+        m_activeFfmpeg = nullptr;
+        if (ok) {
+            return true;
+        }
+
+        if (!fullErr.isEmpty()) {
+            setError(QString("ffmpeg failed: %1").arg(fullErr.split('\n', Qt::SkipEmptyParts).last()));
+        } else if (m_includeSubtitles) {
+            setError("Subtitle burn failed for selected track.");
+        }
+    }
+    return false;
 }
 
 void AppController::setError(const QString &message) {

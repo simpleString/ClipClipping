@@ -24,6 +24,9 @@ class AppController : public QObject {
     Q_PROPERTY(int videoFps READ videoFps NOTIFY videoMetaChanged)
     Q_PROPERTY(int targetWidth READ targetWidth WRITE setTargetWidth NOTIFY settingsChanged)
     Q_PROPERTY(int targetFps READ targetFps WRITE setTargetFps NOTIFY settingsChanged)
+    Q_PROPERTY(bool stickerWebmMode READ stickerWebmMode WRITE setStickerWebmMode NOTIFY settingsChanged)
+    Q_PROPERTY(bool includeSubtitles READ includeSubtitles WRITE setIncludeSubtitles NOTIFY settingsChanged)
+    Q_PROPERTY(int subtitleStreamIndex READ subtitleStreamIndex WRITE setSubtitleStreamIndex NOTIFY settingsChanged)
     Q_PROPERTY(bool converting READ converting NOTIFY conversionStateChanged)
     Q_PROPERTY(int progress READ progress NOTIFY conversionStateChanged)
     Q_PROPERTY(QStringList thumbnailUrls READ thumbnailUrls NOTIFY thumbnailsChanged)
@@ -48,6 +51,9 @@ public:
     int videoFps() const;
     int targetWidth() const;
     int targetFps() const;
+    bool stickerWebmMode() const;
+    bool includeSubtitles() const;
+    int subtitleStreamIndex() const;
     bool converting() const;
     int progress() const;
     QStringList thumbnailUrls() const;
@@ -75,6 +81,9 @@ public slots:
     void setEndTime(double value);
     void setTargetWidth(int value);
     void setTargetFps(int value);
+    void setStickerWebmMode(bool value);
+    void setIncludeSubtitles(bool value);
+    void setSubtitleStreamIndex(int value);
 
 signals:
     void videoPathChanged();
@@ -96,6 +105,7 @@ private:
         int fps = 30;
         QString codec;
         qint64 size = 0;
+        QList<int> subtitleStreamIndexes;
     };
 
     struct AttemptConfig {
@@ -106,6 +116,8 @@ private:
     static int parseFps(const QString &rate);
     static double parseFfmpegTimeToSeconds(const QString &line);
     static QList<AttemptConfig> buildConfigs(double clipDuration, int width, int fps, qint64 maxFileSize);
+    static QList<int> buildWebmCrfConfigs(double clipDuration);
+    QStringList subtitleFilterPrefixes(double startTime, QString *error) const;
     static QString localFileUrl(const QString &path);
 
     VideoInfo probeVideo(const QString &path, QString *error) const;
@@ -115,6 +127,13 @@ private:
                     double clipDuration,
                     int fps,
                     int width);
+    bool runWebmStickerAttempt(const QString &inputPath,
+                               const QString &outputPath,
+                               double startTime,
+                               double clipDuration,
+                               int width,
+                               int fps,
+                               int crf);
     void startThumbnailGeneration(int count);
     void continueThumbnailGeneration();
     void onThumbnailStepTimeout();
@@ -135,6 +154,9 @@ private:
 
     int m_targetWidth = 480;
     int m_targetFps = 15;
+    bool m_stickerWebmMode = false;
+    bool m_includeSubtitles = false;
+    int m_subtitleStreamIndex = -1;
 
     bool m_converting = false;
     int m_progress = 0;

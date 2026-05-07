@@ -8,7 +8,7 @@ Basic.ApplicationWindow {
     id: root
     width: 1000
     height: 720
-    minimumWidth: 860
+    minimumWidth: 1130 
     minimumHeight: 620
     visible: true
     title: "ClipClipping"
@@ -39,8 +39,8 @@ Basic.ApplicationWindow {
         const s = Math.max(0, seconds)
         const mins = Math.floor(s / 60)
         const secs = Math.floor(s % 60)
-        const ds = Math.floor((s % 1) * 10)
-        return mins + ":" + (secs < 10 ? "0" : "") + secs + "." + ds
+        const cs = Math.floor((s % 1) * 100)
+        return mins + ":" + (secs < 10 ? "0" : "") + secs + "." + (cs < 10 ? "0" : "") + cs
     }
 
     function parseTimeInput(str) {
@@ -91,6 +91,7 @@ Basic.ApplicationWindow {
         subtitleOptions = options
 
         const active = player.activeSubtitleTrack
+        appController.subtitleStreamIndex = active
         let selected = 0
         for (let i = 0; i < options.length; ++i) {
             if (options[i].index === active) {
@@ -381,7 +382,7 @@ Basic.ApplicationWindow {
                     Basic.Label { text: "2. Set Start and End points on the timeline."; color: "#c9d7ef"; font.pixelSize: 13 }
                     Basic.Label { text: "3. Adjust FPS and output width."; color: "#c9d7ef"; font.pixelSize: 13 }
                     Basic.Label { text: "4. Choose subtitles (optional)."; color: "#c9d7ef"; font.pixelSize: 13 }
-                    Basic.Label { text: "5. Click Create GIF."; color: "#c9d7ef"; font.pixelSize: 13 }
+                    Basic.Label { text: "5. Choose export format and click Create."; color: "#c9d7ef"; font.pixelSize: 13 }
 
                     Rectangle { width: parent.width; height: 1; color: "#2f466e" }
 
@@ -1130,96 +1131,104 @@ Basic.ApplicationWindow {
                 spacing: 8
 
                 Basic.Label {
-                    text: "GIF Settings"
+                    text: "Export Settings"
                     color: "#bbbbbb"
                     font.pixelSize: 14
                     font.bold: true
                 }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 16
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 16
 
                     Column {
-                        spacing: 4
-                        Basic.Label { text: "FPS: " + appController.targetFps; color: "#999"; font.pixelSize: 12 }
-                        Basic.Slider {
-                            width: 160
-                            from: 6
-                            to: 30
-                            value: appController.targetFps
-                            background: Rectangle {
-                                x: 0
-                                y: (parent.height - height) * 0.5
-                                width: parent.width
-                                height: 6
-                                radius: 3
-                                color: "#1b2740"
-                                border.width: 1
-                                border.color: "#34507a"
+                        spacing: 10
 
-                                Rectangle {
-                                    width: parent.width * ((parent.parent.value - parent.parent.from) / (parent.parent.to - parent.parent.from))
-                                    height: parent.height
+                        Column {
+                            spacing: 4
+                            Basic.Label { text: "FPS: " + appController.targetFps; color: "#999"; font.pixelSize: 12 }
+                            Basic.Slider {
+                                width: 220
+                                implicitHeight: 18
+                                padding: 0
+                                from: 6
+                                to: 30
+                                value: appController.targetFps
+                                background: Rectangle {
+                                    x: 0
+                                    y: (parent.height - height) * 0.5
+                                    width: parent.width
+                                    height: 6
                                     radius: 3
-                                    color: "#5c9dff"
+                                    color: "#1b2740"
+                                    border.width: 1
+                                    border.color: "#34507a"
+
+                                    Rectangle {
+                                        width: parent.width * ((parent.parent.value - parent.parent.from) / (parent.parent.to - parent.parent.from))
+                                        height: parent.height
+                                        radius: 3
+                                        color: "#5c9dff"
+                                    }
                                 }
-                            }
-                            handle: Rectangle {
-                                x: parent.leftPadding + parent.visualPosition * (parent.availableWidth - width)
-                                y: (parent.height - height) * 0.5
-                                implicitWidth: 14
-                                implicitHeight: 14
-                                radius: 7
-                                color: parent.pressed ? "#9ec7ff" : "#d8e6ff"
-                                border.width: 1
-                                border.color: "#4c7bc2"
-                            }
-                            onValueChanged: {
-                                if (pressed)
-                                    appController.targetFps = Math.round(value)
+                                handle: Rectangle {
+                                    x: parent.leftPadding + parent.visualPosition * (parent.availableWidth - width)
+                                    y: Math.round((parent.height - height) * 0.5)
+                                    implicitWidth: 14
+                                    implicitHeight: 14
+                                    radius: 7
+                                    color: parent.pressed ? "#9ec7ff" : "#d8e6ff"
+                                    border.width: 1
+                                    border.color: "#4c7bc2"
+                                }
+                                onValueChanged: {
+                                    if (pressed)
+                                        appController.targetFps = Math.round(value)
+                                }
                             }
                         }
-                    }
 
-                    Column {
-                        spacing: 4
-                        Basic.Label { text: "Width: " + appController.targetWidth + "px"; color: "#999"; font.pixelSize: 12 }
-                        Basic.Slider {
-                            width: 220
-                            from: 100
-                            to: Math.max(100, appController.videoWidth)
-                            value: appController.targetWidth
-                            background: Rectangle {
-                                x: 0
-                                y: (parent.height - height) * 0.5
-                                width: parent.width
-                                height: 6
-                                radius: 3
-                                color: "#1b2740"
-                                border.width: 1
-                                border.color: "#34507a"
-
-                                Rectangle {
-                                    width: parent.width * ((parent.parent.value - parent.parent.from) / (parent.parent.to - parent.parent.from))
-                                    height: parent.height
+                        Column {
+                            spacing: 4
+                            Basic.Label { text: "Width: " + appController.targetWidth + "px"; color: "#999"; font.pixelSize: 12 }
+                            Basic.Slider {
+                                width: 220
+                                implicitHeight: 18
+                                padding: 0
+                                from: 100
+                                to: appController.stickerWebmMode ? 512 : 1024
+                                value: appController.targetWidth
+                                background: Rectangle {
+                                    x: 0
+                                    y: (parent.height - height) * 0.5
+                                    width: parent.width
+                                    height: 6
                                     radius: 3
-                                    color: "#5c9dff"
+                                    color: "#1b2740"
+                                    border.width: 1
+                                    border.color: "#34507a"
+
+                                    Rectangle {
+                                        width: parent.width * ((parent.parent.value - parent.parent.from) / (parent.parent.to - parent.parent.from))
+                                        height: parent.height
+                                        radius: 3
+                                        color: "#5c9dff"
+                                    }
                                 }
-                            }
-                            handle: Rectangle {
-                                x: parent.leftPadding + parent.visualPosition * (parent.availableWidth - width)
-                                y: (parent.height - height) * 0.5
-                                implicitWidth: 14
-                                implicitHeight: 14
-                                radius: 7
-                                color: parent.pressed ? "#9ec7ff" : "#d8e6ff"
-                                border.width: 1
-                                border.color: "#4c7bc2"
-                            }
-                            onValueChanged: {
-                                if (pressed)
-                                    appController.targetWidth = Math.round(value)
+                                handle: Rectangle {
+                                    x: parent.leftPadding + parent.visualPosition * (parent.availableWidth - width)
+                                    y: Math.round((parent.height - height) * 0.5)
+                                    implicitWidth: 14
+                                    implicitHeight: 14
+                                    radius: 7
+                                    color: parent.pressed ? "#9ec7ff" : "#d8e6ff"
+                                    border.width: 1
+                                    border.color: "#4c7bc2"
+                                }
+                                onValueChanged: {
+                                    if (pressed)
+                                        appController.targetWidth = Math.round(value)
+                                }
                             }
                         }
                     }
@@ -1228,7 +1237,11 @@ Basic.ApplicationWindow {
                         spacing: 4
                         Basic.Label { text: "Clip duration: " + (appController.endTime - appController.startTime).toFixed(1) + "s"; color: "#999"; font.pixelSize: 12 }
                         Basic.Label { text: "Estimated size: ~" + appController.estimatedSizeMb.toFixed(1) + "MB"; color: "#999"; font.pixelSize: 12 }
-                        Basic.Label { text: "(Auto-optimized to fit under 10MB)"; color: "#666"; font.pixelSize: 10 }
+                        Basic.Label {
+                            text: appController.stickerWebmMode ? "(Auto-fit: <=256KB, <=3s)" : "(Auto-fit: <=10MB)"
+                            color: "#666"
+                            font.pixelSize: 10
+                        }
                     }
 
                     Column {
@@ -1237,6 +1250,7 @@ Basic.ApplicationWindow {
                         Basic.ComboBox {
                             id: subtitleSelect
                             width: 220
+                            implicitHeight: 34
                             model: subtitleOptions
                             textRole: "label"
                             enabled: subtitleOptions.length > 1
@@ -1251,7 +1265,7 @@ Basic.ApplicationWindow {
                             contentItem: Text {
                                 text: subtitleSelect.displayText
                                 color: subtitleSelect.enabled ? buttonText : buttonTextDisabled
-                                font.pixelSize: 12
+                                font.pixelSize: 13
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
                             }
@@ -1260,7 +1274,7 @@ Basic.ApplicationWindow {
                                 y: (subtitleSelect.height - height) / 2
                                 text: "v"
                                 color: "#8fb7ff"
-                                font.pixelSize: 11
+                                font.pixelSize: 12
                             }
                             popup: Popup {
                                 y: subtitleSelect.height + 2
@@ -1296,59 +1310,160 @@ Basic.ApplicationWindow {
                                 if (syncingSubtitleSelection)
                                     return
                                 const option = subtitleOptions[index]
-                                if (option)
+                                if (option) {
                                     player.activeSubtitleTrack = option.index
+                                    appController.subtitleStreamIndex = option.index
+                                }
                             }
                             onCurrentIndexChanged: {
                                 if (syncingSubtitleSelection)
                                     return
                                 const option = subtitleOptions[currentIndex]
-                                if (option && player.activeSubtitleTrack !== option.index)
+                                if (option && player.activeSubtitleTrack !== option.index) {
                                     player.activeSubtitleTrack = option.index
+                                    appController.subtitleStreamIndex = option.index
+                                }
+                            }
+                        }
+
+                        Basic.CheckBox {
+                            id: burnSubtitlesCheck
+                            text: "Burn subtitles into export"
+                            checked: appController.includeSubtitles
+                            enabled: subtitleOptions.length > 1 && subtitleSelect.currentIndex > 0
+                            onToggled: appController.includeSubtitles = checked
+                            indicator: Rectangle {
+                                implicitWidth: 18
+                                implicitHeight: 18
+                                radius: 4
+                                color: burnSubtitlesCheck.checked ? "#4f86de" : "#131d33"
+                                border.width: 1
+                                border.color: burnSubtitlesCheck.checked ? "#7fb2ff" : "#34507a"
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: 8
+                                    height: 8
+                                    radius: 2
+                                    visible: burnSubtitlesCheck.checked
+                                    color: "#eaf3ff"
+                                }
+                            }
+                            contentItem: Text {
+                                text: burnSubtitlesCheck.text
+                                color: burnSubtitlesCheck.enabled ? "#b7c7e6" : "#6f83ab"
+                                font.pixelSize: 12
+                                verticalAlignment: Text.AlignVCenter
+                                leftPadding: burnSubtitlesCheck.indicator.width + 8
                             }
                         }
                     }
 
                     Item { Layout.fillWidth: true }
 
-                    Basic.Button {
-                        text: appController.converting ? "Converting..." : "Create GIF"
-                        enabled: !appController.converting && appController.endTime > appController.startTime
-                        onClicked: appController.openSaveGifDialog()
-                        background: Rectangle {
-                            radius: 8
-                            border.width: 1
-                            border.color: parent.enabled ? (parent.hovered ? "#ffda8a" : "#dba44b") : "#5f4f2e"
-                            color: parent.enabled ? (parent.hovered ? "#f6b14d" : "#e39b38") : "#7a6440"
+                    Column {
+                        spacing: 0
+                        Layout.alignment: Qt.AlignTop
+
+                        Item { width: 1; height: 20 }
+
+                        Row {
+                            spacing: 8
+
+                            Basic.Button {
+                                text: "GIF"
+                                implicitWidth: 88
+                                implicitHeight: 40
+                                onClicked: appController.stickerWebmMode = false
+                                background: Rectangle {
+                                    radius: 8
+                                    color: appController.stickerWebmMode ? "#1b2740" : "#35588a"
+                                    border.width: 1
+                                    border.color: appController.stickerWebmMode ? "#34507a" : "#6fa7ff"
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: appController.stickerWebmMode ? "#b7c7e6" : "#eaf3ff"
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                leftPadding: 12
+                                rightPadding: 12
+                            }
+
+                            Basic.Button {
+                                text: "Sticker WEBM"
+                                implicitWidth: 148
+                                implicitHeight: 40
+                                onClicked: appController.stickerWebmMode = true
+                                background: Rectangle {
+                                    radius: 8
+                                    color: appController.stickerWebmMode ? "#35588a" : "#1b2740"
+                                    border.width: 1
+                                    border.color: appController.stickerWebmMode ? "#6fa7ff" : "#34507a"
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: appController.stickerWebmMode ? "#eaf3ff" : "#b7c7e6"
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                leftPadding: 12
+                                rightPadding: 12
+                            }
                         }
-                        contentItem: Text {
-                            text: parent.text
-                            color: "#1e1303"
-                            font.bold: true
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        padding: 10
                     }
 
-                    Basic.Button {
-                        text: "Cancel"
-                        visible: appController.converting
-                        onClicked: appController.cancelConversion()
-                        background: Rectangle {
-                            radius: 8
-                            border.width: 1
-                            border.color: parent.hovered ? buttonBorderHover : buttonBorder
-                            color: parent.hovered ? buttonBgHover : buttonBg
+                    Column {
+                        spacing: 0
+                        Layout.alignment: Qt.AlignTop
+
+                        Item { width: 1; height: 20 }
+
+                        Basic.Button {
+                            text: appController.converting ? "Converting..." : (appController.stickerWebmMode ? "Create Sticker WEBM" : "Create GIF")
+                            implicitWidth: 220
+                            implicitHeight: 40
+                            enabled: !appController.converting && appController.endTime > appController.startTime
+                            onClicked: appController.openSaveGifDialog()
+                            background: Rectangle {
+                                radius: 8
+                                border.width: 1
+                                border.color: parent.enabled ? (parent.hovered ? "#ffda8a" : "#dba44b") : "#5f4f2e"
+                                color: parent.enabled ? (parent.hovered ? "#f6b14d" : "#e39b38") : "#7a6440"
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: "#1e1303"
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            leftPadding: 14
+                            rightPadding: 14
                         }
-                        contentItem: Text {
-                            text: parent.text
-                            color: buttonText
-                            font.bold: true
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
+
+                        Basic.Button {
+                            text: "Cancel"
+                            visible: appController.converting
+                            topPadding: 8
+                            onClicked: appController.cancelConversion()
+                            background: Rectangle {
+                                radius: 8
+                                border.width: 1
+                                border.color: parent.hovered ? buttonBorderHover : buttonBorder
+                                color: parent.hovered ? buttonBgHover : buttonBg
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: buttonText
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            padding: 10
                         }
-                        padding: 10
                     }
                 }
 

@@ -44,6 +44,36 @@ $windeployqt = "C:\Qt\6.6.3\msvc2019_64\bin\windeployqt.exe"
 .\package\bin\ClipClipping.exe
 ```
 
+## Development loop (Windows)
+
+For day-to-day coding, use a separate dev build dir and skip deploy steps:
+
+```powershell
+# recommended on this machine (ensures Qt DLLs are found on run)
+.\scripts\dev.ps1 -QtPrefix "C:\Qt\6.6.3\msvc2019_64"
+
+# configure once + build Debug
+.\scripts\dev.ps1
+
+# if Qt is not in default CMake search paths
+.\scripts\dev.ps1 -QtPrefix "C:\Qt\6.6.3\msvc2019_64"
+
+# only build (without auto-run)
+.\scripts\dev.ps1 -NoRun
+
+# rebuild from clean CMake cache
+.\scripts\dev.ps1 -Reconfigure
+```
+
+Notes:
+
+- Script builds target `ClipClipping` into `build` by default.
+- After successful build, app starts automatically (disable with `-NoRun`).
+- Default config is `Debug` (use `-Config Release` if needed).
+- If CMake cannot find Qt6, pass `-QtPrefix` with your Qt kit path.
+- If app exits immediately on Windows (missing DLL), run with `-QtPrefix`.
+- This is for fast local iteration; `windeployqt` is still needed for portable package output.
+
 Windows build requires Qt runtime deployment (DLLs, plugins, QML modules).
 Running `build\...\ClipClipping.exe` directly will usually fail with missing `Qt6*.dll` errors.
 
@@ -149,13 +179,3 @@ Note for AppImage runtime:
 
 - It defaults to `xcb` platform for better compatibility.
 - File picker in AppImage uses Qt dialog (not native DE dialog) to avoid KDE/KIO runtime issues.
-
-## Current scope
-
-- Video selection (dialog + drag&drop)
-- Playback via Qt Multimedia
-- Trim range (start/end)
-- GIF export with auto quality fallback to fit under 10MB
-- Progress + cancel
-
-No mpv fallback yet (intentionally disabled for this stage).
