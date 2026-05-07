@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFileDialog>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -13,11 +14,12 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QMediaPlayer>
 #include <QVideoSink>
 #include <QVideoFrame>
 #include <QImage>
-#include <QtConcurrent>
 
 #include <algorithm>
 #include <cmath>
@@ -28,6 +30,61 @@ constexpr qint64 kMaxStickerWebmSize = 256 * 1024;
 constexpr int kFixedThumbCount = 12;
 const QString kLastImportPathKey = QStringLiteral("ui/lastImportPath");
 const QString kLastExportPathKey = QStringLiteral("ui/lastExportPath");
+QMutex g_thumbCacheMutex;
+QHash<QString, QStringList> g_thumbMemoryCache;
+
+struct ThumbBatchPaths {
+    QString cacheKey;
+    QString dirPath;
+    double clampedFrom = 0.0;
+    double span = 0.05;
+};
+
+ThumbBatchPaths buildThumbBatchPaths(const QString &videoPath, double duration, int count, double fromSec, double toSec) {
+    ThumbBatchPaths result;
+    const QString tmpRoot = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    if (tmpRoot.isEmpty() || duration <= 0.0 || count <= 0) {
+        return result;
+    }
+    const QFileInfo info(videoPath);
+    const double clampedFrom = std::max(0.0, std::min(fromSec, duration));
+    const double clampedTo = std::max(clampedFrom + 0.05, std::min(toSec, duration));
+    const double span = std::max(0.05, clampedTo - clampedFrom);
+    const QByteArray key = videoPath.toUtf8()
+        + QByteArray::number(info.size())
+        + QByteArray::number(qint64(info.lastModified().toMSecsSinceEpoch()))
+        + QByteArray::number(qint64(clampedFrom * 1000.0))
+        + QByteArray::number(qint64(clampedTo * 1000.0))
+        + QByteArrayLiteral("thumb_ffmpeg_parallel_v2");
+    const QString hash = QString::fromLatin1(QCryptographicHash::hash(key, QCryptographicHash::Md5).toHex());
+    result.cacheKey = QStringLiteral("%1_%2").arg(hash).arg(count);
+    result.dirPath = QDir(tmpRoot).filePath(QStringLiteral("clipclipping_thumbs/%1/fallback_%2").arg(hash).arg(count));
+    result.clampedFrom = clampedFrom;
+    result.span = span;
+    return result;
+}
+
+QStringList buildThumbUrls(const QString &dirPath, int count, int *generatedCount) {
+    QStringList urls;
+    urls.reserve(std::max(0, count));
+    int generated = 0;
+    QDir dir(dirPath);
+    for (int i = 0; i < count; ++i) {
+        const QString outPath = dir.filePath(QStringLiteral("thumb_%1.png").arg(i, 3, 10, QChar('0')));
+        if (QFileInfo::exists(outPath)) {
+            urls.push_back(QUrl::fromLocalFile(outPath).toString());
+            generated += 1;
+        } else if (!urls.isEmpty()) {
+            urls.push_back(urls.back());
+        } else {
+            urls.push_back(QString());
+        }
+    }
+    if (generatedCount) {
+        *generatedCount = generated;
+    }
+    return urls;
+}
 
 QString bundledToolPath(const QString &toolName) {
 #ifdef Q_OS_WIN
@@ -62,51 +119,55 @@ QStringList generateThumbnailsWithFfmpegFallback(const QString &videoPath, doubl
         + QByteArray::number(qint64(clampedTo * 1000.0))
         + QByteArrayLiteral("thumb_ffmpeg_parallel_v2");
     const QString hash = QString::fromLatin1(QCryptographicHash::hash(key, QCryptographicHash::Md5).toHex());
+    const QString cacheKey = QStringLiteral("%1_%2").arg(hash).arg(count);
+
+    {
+        QMutexLocker locker(&g_thumbCacheMutex);
+        const auto it = g_thumbMemoryCache.constFind(cacheKey);
+        if (it != g_thumbMemoryCache.constEnd()) {
+            return it.value();
+        }
+    }
+
     const QString dirPath = QDir(tmpRoot).filePath(QStringLiteral("clipclipping_thumbs/%1/fallback_%2").arg(hash).arg(count));
     QDir dir(dirPath);
     if (!dir.exists()) {
         dir.mkpath(QStringLiteral("."));
     }
 
-    struct Job {
-        int idx;
-        QString outPath;
-        QProcess *proc;
-    };
-
-    QList<Job> jobs;
-    jobs.reserve(count);
-
+    bool allExist = true;
     for (int i = 0; i < count; ++i) {
         const QString outPath = dir.filePath(QStringLiteral("thumb_%1.png").arg(i, 3, 10, QChar('0')));
         if (!QFileInfo::exists(outPath)) {
-            const double pos = clampedFrom + span * (double(i) + 0.5) / double(count);
-            auto *proc = new QProcess();
-            QStringList args{
-                "-y",
-                "-ss", QString::number(pos, 'f', 4),
-                "-i", videoPath,
-                "-frames:v", "1",
-                "-vf", "scale=96:-2",
-                "-q:v", "8",
-                outPath
-            };
-            proc->start(bundledToolPath(QStringLiteral("ffmpeg")), args);
-            jobs.push_back({i, outPath, proc});
+            allExist = false;
+            break;
         }
     }
 
-    for (const Job &job : jobs) {
-        if (job.proc->state() == QProcess::Starting) {
-            job.proc->waitForStarted(1500);
+    if (!allExist) {
+        const QString outPattern = dir.filePath(QStringLiteral("thumb_%03d.png"));
+        QProcess proc;
+        const double fps = std::max(0.2, double(count) / std::max(0.05, span));
+        QStringList args{
+            "-y",
+            "-ss", QString::number(clampedFrom, 'f', 4),
+            "-t", QString::number(span, 'f', 4),
+            "-i", videoPath,
+            "-vf", QStringLiteral("fps=%1,scale=96:-2").arg(QString::number(fps, 'f', 6)),
+            "-frames:v", QString::number(count),
+            outPattern
+        };
+        proc.start(bundledToolPath(QStringLiteral("ffmpeg")), args);
+        if (proc.state() == QProcess::Starting) {
+            proc.waitForStarted(2000);
         }
-    }
-    for (const Job &job : jobs) {
-        if (!job.proc->waitForFinished(7000)) {
-            job.proc->kill();
-            job.proc->waitForFinished(1000);
+        if (proc.state() == QProcess::Running) {
+            proc.waitForFinished(10000);
         }
-        delete job.proc;
+        if (proc.state() == QProcess::Running) {
+            proc.kill();
+            proc.waitForFinished(1000);
+        }
     }
 
     for (int i = 0; i < count; ++i) {
@@ -119,12 +180,19 @@ QStringList generateThumbnailsWithFfmpegFallback(const QString &videoPath, doubl
             urls.push_back(QString());
         }
     }
+
+    {
+        QMutexLocker locker(&g_thumbCacheMutex);
+        g_thumbMemoryCache.insert(cacheKey, urls);
+    }
+
     return urls;
 }
 }
 
 AppController::AppController(QObject *parent) : QObject(parent) {
-    m_thumbStepTimer.setSingleShot(true);
+    m_thumbStepTimer.setSingleShot(false);
+    m_thumbStepTimer.setInterval(80);
     connect(&m_thumbStepTimer, &QTimer::timeout, this, &AppController::onThumbnailStepTimeout);
 }
 
@@ -316,6 +384,9 @@ void AppController::ensureThumbnailsForWindow(int count, double fromSec, double 
     m_thumbRequestedSeq += 1;
 
     m_pendingThumbnailCount = clamped;
+    if (m_thumbnailGenerating && m_thumbFfmpegProcess) {
+        m_thumbFfmpegProcess->kill();
+    }
     if (!m_thumbnailGenerating) {
         startThumbnailGeneration(clamped);
     }
@@ -452,6 +523,14 @@ void AppController::clearVideo() {
     m_thumbnailPoolCount = 0;
     m_pendingThumbnailCount = 0;
     m_thumbnailGenerating = false;
+    if (m_thumbFfmpegProcess) {
+        if (m_thumbFfmpegProcess->state() != QProcess::NotRunning) {
+            m_thumbFfmpegProcess->kill();
+            m_thumbFfmpegProcess->waitForFinished(500);
+        }
+        m_thumbFfmpegProcess->deleteLater();
+        m_thumbFfmpegProcess = nullptr;
+    }
     if (m_thumbStepTimer.isActive()) {
         m_thumbStepTimer.stop();
     }
@@ -491,44 +570,90 @@ void AppController::startThumbnailGeneration(int count) {
 
     Q_UNUSED(count)
     m_thumbTargetCount = kFixedThumbCount;
-    m_thumbnailGenerating = true;
-    m_thumbRunningSeq = m_thumbRequestedSeq;
-
-    QObject::disconnect(&m_thumbWatcher, nullptr, this, nullptr);
-    const QString path = m_videoPath;
-    const double fromSec = m_thumbWindowFrom;
-    const double toSec = m_thumbWindowTo;
-    const int runSeq = m_thumbRunningSeq;
-    connect(&m_thumbWatcher, &QFutureWatcher<QStringList>::finished, this, [this, path, runSeq]() {
-        if (path != m_videoPath) {
-            return;
-        }
-        if (runSeq != m_thumbRequestedSeq) {
-            m_thumbnailGenerating = false;
-            startThumbnailGeneration(kFixedThumbCount);
-            return;
-        }
-        const QStringList generated = m_thumbWatcher.result();
-        m_thumbnailUrls = generated;
-        m_thumbnailPoolUrls = generated;
-        m_thumbnailPoolCount = generated.size();
-        m_thumbnailCount = generated.size();
-        m_thumbnailsGenerated = generated.size();
-        m_pendingThumbnailCount = 0;
+    const int targetCount = m_thumbTargetCount;
+    const ThumbBatchPaths paths = buildThumbBatchPaths(m_videoPath, m_videoInfo.duration, targetCount, m_thumbWindowFrom, m_thumbWindowTo);
+    if (paths.dirPath.isEmpty()) {
         m_thumbnailGenerating = false;
+        return;
+    }
+
+    m_thumbRunningSeq = m_thumbRequestedSeq;
+    m_thumbExpectedCount = targetCount;
+    m_thumbOutputDir = paths.dirPath;
+    m_thumbCacheKey = paths.cacheKey;
+
+    {
+        QMutexLocker locker(&g_thumbCacheMutex);
+        const auto it = g_thumbMemoryCache.constFind(m_thumbCacheKey);
+        if (it != g_thumbMemoryCache.constEnd()) {
+            m_thumbnailUrls = it.value();
+            m_thumbnailPoolUrls = m_thumbnailUrls;
+            m_thumbnailPoolCount = m_thumbnailUrls.size();
+            m_thumbnailCount = m_thumbnailUrls.size();
+            m_thumbnailsGenerated = m_thumbnailUrls.size();
+            m_pendingThumbnailCount = 0;
+            m_thumbnailGenerating = false;
+            m_thumbnailsVersion += 1;
+            emit thumbnailsChanged();
+            return;
+        }
+    }
+
+    if (m_thumbFfmpegProcess) {
+        if (m_thumbFfmpegProcess->state() != QProcess::NotRunning) {
+            m_thumbFfmpegProcess->kill();
+            m_thumbFfmpegProcess->waitForFinished(500);
+        }
+        m_thumbFfmpegProcess->deleteLater();
+        m_thumbFfmpegProcess = nullptr;
+    }
+
+    QDir dir(paths.dirPath);
+    if (!dir.exists()) {
+        dir.mkpath(QStringLiteral("."));
+    }
+
+    int generatedCount = 0;
+    const QStringList existing = buildThumbUrls(paths.dirPath, targetCount, &generatedCount);
+    if (generatedCount > 0) {
+        m_thumbnailUrls = existing;
+        m_thumbnailPoolUrls = existing;
+        m_thumbnailPoolCount = existing.size();
+        m_thumbnailCount = existing.size();
+        m_thumbnailsGenerated = generatedCount;
         m_thumbnailsVersion += 1;
         emit thumbnailsChanged();
+    }
+    if (generatedCount >= targetCount) {
+        QMutexLocker locker(&g_thumbCacheMutex);
+        g_thumbMemoryCache.insert(m_thumbCacheKey, existing);
+        m_pendingThumbnailCount = 0;
+        m_thumbnailGenerating = false;
+        return;
+    }
 
-        if (m_thumbRunningSeq != m_thumbRequestedSeq) {
-            startThumbnailGeneration(kFixedThumbCount);
-        }
-    });
+    m_thumbnailGenerating = true;
+    m_thumbFfmpegProcess = new QProcess(this);
+    const double fps = std::max(0.2, double(targetCount) / std::max(0.05, paths.span));
+    const QString outPattern = dir.filePath(QStringLiteral("thumb_%03d.png"));
+    QStringList args{
+        "-y",
+        "-ss", QString::number(paths.clampedFrom, 'f', 4),
+        "-t", QString::number(paths.span, 'f', 4),
+        "-i", m_videoPath,
+        "-vf", QStringLiteral("fps=%1,scale=96:-2").arg(QString::number(fps, 'f', 6)),
+        "-frames:v", QString::number(targetCount),
+        outPattern
+    };
 
-    const double duration = m_videoInfo.duration;
-    const int targetCount = m_thumbTargetCount;
-    m_thumbWatcher.setFuture(QtConcurrent::run([path, duration, targetCount, fromSec, toSec]() {
-        return generateThumbnailsWithFfmpegFallback(path, duration, targetCount, fromSec, toSec);
-    }));
+    connect(m_thumbFfmpegProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this](int, QProcess::ExitStatus) {
+                onThumbnailStepTimeout();
+                finishThumbnailGeneration();
+            });
+
+    m_thumbFfmpegProcess->start(bundledToolPath(QStringLiteral("ffmpeg")), args);
+    m_thumbStepTimer.start();
 }
 
 void AppController::continueThumbnailGeneration() {
@@ -536,11 +661,47 @@ void AppController::continueThumbnailGeneration() {
 }
 
 void AppController::onThumbnailStepTimeout() {
-    // unused in ffmpeg mode
+    if (!m_thumbnailGenerating || m_thumbOutputDir.isEmpty() || m_thumbExpectedCount <= 0) {
+        return;
+    }
+    if (m_thumbRunningSeq != m_thumbRequestedSeq) {
+        return;
+    }
+
+    int generatedCount = 0;
+    const QStringList current = buildThumbUrls(m_thumbOutputDir, m_thumbExpectedCount, &generatedCount);
+    if (generatedCount != m_thumbnailsGenerated || current != m_thumbnailUrls) {
+        m_thumbnailUrls = current;
+        m_thumbnailPoolUrls = current;
+        m_thumbnailPoolCount = current.size();
+        m_thumbnailCount = current.size();
+        m_thumbnailsGenerated = generatedCount;
+        m_thumbnailsVersion += 1;
+        emit thumbnailsChanged();
+    }
+
+    if (generatedCount >= m_thumbExpectedCount && !m_thumbCacheKey.isEmpty()) {
+        QMutexLocker locker(&g_thumbCacheMutex);
+        g_thumbMemoryCache.insert(m_thumbCacheKey, current);
+    }
 }
 
 void AppController::finishThumbnailGeneration() {
+    if (m_thumbStepTimer.isActive()) {
+        m_thumbStepTimer.stop();
+    }
+    if (m_thumbFfmpegProcess) {
+        if (m_thumbFfmpegProcess->state() != QProcess::NotRunning) {
+            m_thumbFfmpegProcess->kill();
+            m_thumbFfmpegProcess->waitForFinished(200);
+        }
+        m_thumbFfmpegProcess->deleteLater();
+        m_thumbFfmpegProcess = nullptr;
+    }
     m_thumbnailGenerating = false;
+    if (m_thumbRunningSeq != m_thumbRequestedSeq) {
+        startThumbnailGeneration(kFixedThumbCount);
+    }
 }
 
 void AppController::setCurrentTime(double value) {

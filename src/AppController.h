@@ -5,7 +5,6 @@
 #include <QStringList>
 #include <QTimer>
 #include <QImage>
-#include <QFutureWatcher>
 
 class QMediaPlayer;
 class QVideoSink;
@@ -186,7 +185,10 @@ private:
     bool m_thumbFrameReady = false;
     int m_thumbRetryCount = 0;
     QImage m_lastThumbImage;
-    QFutureWatcher<QStringList> m_thumbWatcher;
+    QProcess *m_thumbFfmpegProcess = nullptr;
+    QString m_thumbOutputDir;
+    QString m_thumbCacheKey;
+    int m_thumbExpectedCount = 0;
     int m_thumbRequestedSeq = 0;
     int m_thumbRunningSeq = 0;
 };

@@ -580,7 +580,7 @@ Basic.ApplicationWindow {
                     const fps = Math.max(1, appController.videoFps)
                     const duration = Math.max(0.001, safeDuration)
                     const viewWidth = Math.max(1, timelineFlick.width)
-                    const pxPerFrameTarget = 14.0
+                    const pxPerFrameTarget = 36.0
                     const frameScale = (duration * fps * pxPerFrameTarget) / viewWidth
                     return Math.max(20.0, frameScale)
                 }
@@ -608,11 +608,41 @@ Basic.ApplicationWindow {
                     thumbsDebounce.restart()
                 }
 
+                function setZoomScale(scaleValue) {
+                    const oldScale = timelinePanel.timelineScale
+                    const newScale = clamp(scaleValue, timelinePanel.minScale, timelinePanel.maxScale)
+                    if (Math.abs(newScale - oldScale) < 0.0001)
+                        return
+
+                    const oldContentWidth = timelineFlick.width * oldScale
+                    const playheadOldX = (appController.currentTime / safeDuration) * oldContentWidth
+                    const screenX = playheadOldX - timelineFlick.contentX
+                    timelinePanel.timelineScale = newScale
+                    const newContentWidth = timelineFlick.width * newScale
+                    const newPlayheadX = (appController.currentTime / safeDuration) * newContentWidth
+                    const maxContentX = Math.max(0, timelineFlick.contentWidth - timelineFlick.width)
+                    timelineFlick.contentX = clamp(newPlayheadX - screenX, 0, maxContentX)
+                    requestVisibleWindowThumbs()
+                    thumbsDebounce.restart()
+                }
+
                 function fitTimeline() {
                     timelinePanel.timelineScale = 1.0
                     timelineFlick.contentX = 0
                     requestVisibleWindowThumbs()
                     thumbsDebounce.restart()
+                }
+
+                function sliderToScale(normValue) {
+                    const t = clamp(normValue, 0, 1)
+                    const ratio = Math.max(1.0001, timelinePanel.maxScale / timelinePanel.minScale)
+                    return timelinePanel.minScale * Math.pow(ratio, t)
+                }
+
+                function scaleToSlider(scaleValue) {
+                    const clamped = clamp(scaleValue, timelinePanel.minScale, timelinePanel.maxScale)
+                    const ratio = Math.max(1.0001, timelinePanel.maxScale / timelinePanel.minScale)
+                    return Math.log(clamped / timelinePanel.minScale) / Math.log(ratio)
                 }
 
                 function requestAdaptiveThumbs() {
@@ -784,15 +814,49 @@ Basic.ApplicationWindow {
                         ToolTip.text: "Zoom out (Alt+- / Alt+Down)"
                     }
 
-                    Rectangle {
-                        width: 44
+                    Item {
+                        width: 150
                         height: 26
-                        color: "transparent"
-                        Basic.Label {
-                            anchors.centerIn: parent
-                            text: Math.round(timelinePanel.timelineScale * 100) + "%"
-                            color: "#8ea4c7"
-                            font.pixelSize: 11
+
+                        Basic.Slider {
+                            id: zoomSlider
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width
+                            implicitHeight: 18
+                            padding: 0
+                            from: 0
+                            to: 1
+                            value: timelinePanel.scaleToSlider(timelinePanel.timelineScale)
+                            onMoved: timelinePanel.setZoomScale(timelinePanel.sliderToScale(value))
+                            background: Rectangle {
+                                x: 0
+                                y: (parent.height - height) * 0.5
+                                width: parent.width
+                                height: 6
+                                radius: 3
+                                color: "#1b2740"
+                                border.width: 1
+                                border.color: "#34507a"
+
+                                Rectangle {
+                                    width: parent.width * zoomSlider.visualPosition
+                                    height: parent.height
+                                    radius: 3
+                                    color: "#5c9dff"
+                                }
+                            }
+                            handle: Rectangle {
+                                x: zoomSlider.leftPadding + zoomSlider.visualPosition * (zoomSlider.availableWidth - width)
+                                y: Math.round((parent.height - height) * 0.5)
+                                implicitWidth: 14
+                                implicitHeight: 14
+                                radius: 7
+                                color: zoomSlider.pressed ? "#9ec7ff" : "#d8e6ff"
+                                border.width: 1
+                                border.color: "#4c7bc2"
+                            }
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Zoom timeline"
                         }
                     }
 
