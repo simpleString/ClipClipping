@@ -6,9 +6,9 @@ import QtMultimedia
 
 Basic.ApplicationWindow {
     id: root
-    width: 1000
+    width: 1230
     height: 720
-    minimumWidth: 1130 
+    minimumWidth: 1230 
     minimumHeight: 620
     visible: true
     title: "ClipClipping"
@@ -20,6 +20,9 @@ Basic.ApplicationWindow {
     property bool syncingSubtitleSelection: false
     property bool mediaLoadedInitDone: false
     property bool timelineScrubbing: false
+    property bool scrubResumePlaybackAfterRelease: false
+    property real scrubTargetTime: 0
+    property real scrubLastAppliedTime: -1
     readonly property color buttonBg: "#1f2b46"
     readonly property color buttonBgHover: "#26385c"
     readonly property color buttonBorder: "#3a5078"
@@ -73,6 +76,11 @@ Basic.ApplicationWindow {
         const clamped = clamp(seconds, 0, safeDuration)
         player.position = Math.round(clamped * 1000)
         appController.currentTime = clamped
+    }
+
+    function setScrubTarget(seconds) {
+        scrubTargetTime = clamp(seconds, 0, safeDuration)
+        appController.currentTime = scrubTargetTime
     }
 
     function subtitleTrackLabel(track, idx) {
@@ -196,6 +204,23 @@ Basic.ApplicationWindow {
         id: playerAudio
         volume: 1.0
         muted: true
+    }
+
+    Timer {
+        id: scrubUpdateTimer
+        interval: 33
+        repeat: true
+        running: false
+        onTriggered: {
+            if (!timelineScrubbing)
+                return
+            if (Math.abs(scrubTargetTime - scrubLastAppliedTime) < 0.001)
+                return
+            const targetMs = Math.round(scrubTargetTime * 1000)
+            scrubLastAppliedTime = scrubTargetTime
+            if (Math.abs(player.position - targetMs) >= 2)
+                player.position = targetMs
+        }
     }
 
     Connections {
@@ -996,17 +1021,28 @@ Basic.ApplicationWindow {
                                 lastX = mouse.x
                                 if (panMode)
                                     return
+                                scrubResumePlaybackAfterRelease = player.playbackState === MediaPlayer.PlayingState
+                                player.pause()
                                 timelineScrubbing = true
                                 const t = clamp((mouse.x / timelineView.width) * safeDuration, 0, safeDuration)
-                                scrubTo(t)
+                                setScrubTarget(t)
+                                scrubLastAppliedTime = -1
+                                scrubUpdateTimer.start()
                             }
 
                             onReleased: {
+                                scrubUpdateTimer.stop()
+                                scrubTo(scrubTargetTime)
+                                if (!panMode && scrubResumePlaybackAfterRelease)
+                                    player.play()
                                 timelineScrubbing = false
                                 panMode = false
                             }
 
                             onCanceled: {
+                                scrubUpdateTimer.stop()
+                                if (!panMode && scrubResumePlaybackAfterRelease)
+                                    player.play()
                                 timelineScrubbing = false
                                 panMode = false
                             }
@@ -1022,7 +1058,7 @@ Basic.ApplicationWindow {
                                     return
                                 }
                                 const t = clamp((mouse.x / timelineView.width) * safeDuration, 0, safeDuration)
-                                scrubTo(t)
+                                setScrubTarget(t)
                             }
 
                             function wheelDeltaValue(wheel) {
