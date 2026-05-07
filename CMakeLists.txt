@@ -37,6 +37,9 @@ qt_add_executable(ClipClipping
 )
 
 if(WIN32)
+    set_target_properties(ClipClipping PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
     configure_file(
         "${CMAKE_SOURCE_DIR}/assets/app.rc.in"
         "${CMAKE_BINARY_DIR}/app.rc"
